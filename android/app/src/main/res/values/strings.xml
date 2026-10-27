@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">One Job</string>
+  <string name="home_title">ONE JOB</string>
+  <string name="home_tagline">Everyone has one job. Everything goes wrong at the same time.</string>
+  <string name="foundation_status">Repository foundation</string>
+  <string name="foundation_description">Room creation, joining, and gameplay are planned for later phases.</string>
+</resources>

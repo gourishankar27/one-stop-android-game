@@ -1,0 +1,31 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+local.properties
+*.jks
+*.keystore
+keystore.properties
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+# Android / editors
+.gradle/
+.kotlin/
+.idea/
+*.iml
+captures/
+.DS_Store
+Thumbs.db
+# Local runtime artifacts
+*.log
+artifacts/
