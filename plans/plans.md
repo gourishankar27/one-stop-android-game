@@ -6,16 +6,19 @@ evidence for every required gate, including manual gates where specified.
 
 ## Current state — 2026-10-27
 
-- Current phase: **00 — Repository Foundation, implemented; Android verification pending**.
-- Completed phases: none marked complete yet.
+- Current phase: **00 — Repository Foundation, complete**.
+- Completed phases: **00**. Next eligible phase: **01**, awaiting explicit instruction.
 - Delivered foundation: Python health service/package/tests, Compose placeholder,
   wrapper/tooling, architecture/game/protocol documents and all phase briefs.
-- Remaining Phase 00 gates: successful Android build/lint and emulator/device
-  launch plus included instrumented smoke test on the local development machine.
-- Environment limitation: Gradle distribution download failed with `Network is
-  unreachable`; Android SDK/emulator are not present in the Work environment.
-- Observed evidence and exact follow-up commands: [FOUNDATION_VALIDATION.md](../docs/FOUNDATION_VALIDATION.md).
-- First session prompt: [START_HERE.md](START_HERE.md).
+- Phase 00 evidence: repository checker; Python 3.12 locked setup, 2 tests,
+  Ruff/mypy and package build; Android debug build/lint; successful Studio sync
+  and emulator launch in both themes; included instrumented smoke test passed.
+- Foundation smoke-test fix: explicit Espresso 3.7.0 replaces the incompatible
+  transitive 3.5.0 in tests only (ADR-012). No gameplay implementation was added.
+- Remaining Phase 00 gates: none. Non-blocking warnings and the single-emulator
+  coverage limit are recorded with exact commands in
+  [FOUNDATION_VALIDATION.md](../docs/FOUNDATION_VALIDATION.md).
+- Session prompts: [START_HERE.md](START_HERE.md).
 
 ## Product goal and MVP
 
@@ -47,7 +50,7 @@ another ready phase explicitly; never execute more than the selected phase.
 
 | Status | Phase / brief | Prerequisites | Milestone |
 | --- | --- | --- | --- |
-| [ ] | [00 — Repository Foundation](phase-00-repository-foundation.md) | None | Local projects and verification complete |
+| [x] | [00 — Repository Foundation](phase-00-repository-foundation.md) | None | Local projects and verification complete |
 | [ ] | [01 — Game Domain Model](phase-01-game-domain-model.md) | 00 | Pure validated types |
 | [ ] | [02 — Core Game Engine](phase-02-game-engine.md) | 01 | Deterministic baseline simulation |
 | [ ] | [03 — Server Foundation](phase-03-server-foundation.md) | 02 | Typed WS/lifespan adapter |
@@ -121,7 +124,7 @@ No open-source license has been chosen by the owner.
 | In-memory process loss / multi-worker routing | Single process; restart loses rooms; scale only with a later ownership decision |
 | Phone networking and Windows setup | Debug endpoint evidence in 06; party discovery decision in 16 |
 | Hosting choice for external friends | Unselected; WSS operating guide in 18, no service provisioned now |
-| Toolchain build not verified here | Finish Phase 00 on Windows with exact commands; do not skip this gate |
+| Toolchain and device coverage | Windows foundation checks and one API 37 emulator verified; physical phones/API 26 and other operating systems remain untested |
 | License and distribution scope | Owner chooses before public source distribution; release review in 18 |
 
 ## Handoff history
@@ -130,3 +133,13 @@ No open-source license has been chosen by the owner.
 checks are recorded in FOUNDATION_VALIDATION.md. Phase 00 remains open for
 Android validation. No domain/gameplay, WebSocket room behavior, deployment or
 later phase has been implemented.
+
+2026-10-27 (local verification): Phase 00 completed after all required gates
+passed. Python 3.12.10/uv, JDK 17, SDK Platform 36/Build Tools 35.0.0 verified.
+Backend: 2 tests, Ruff/mypy and wheel/sdist passed. Android build/lint passed
+(0 errors, 5 warnings; JVM tests NO-SOURCE); the unchanged Compose smoke passed
+after the test-only Espresso fix. Studio sync/Run and both system themes were
+verified on the API 37 emulator. IDE-generated JDK 17 daemon criteria were
+preserved and included in final checks; unrelated editor settings were left
+untouched. Exact evidence and limitations are in FOUNDATION_VALIDATION.md.
+Phase 01 is recommended but was not started.

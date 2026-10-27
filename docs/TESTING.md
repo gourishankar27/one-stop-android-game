@@ -27,6 +27,9 @@ From `android/`: `./gradlew :app:assembleDebug :app:lintDebug :app:testDebugUnit
 Use `./gradlew.bat` on Windows. `:app:connectedDebugAndroidTest` requires a device.
 A successful `testDebugUnitTest NO-SOURCE` is not evidence of Android unit tests.
 The included Compose instrumented test checks that the foundation screen launches.
+Keep its explicit Espresso 3.7.0 dependency: Compose's older transitive version
+failed before the assertions on API 37. ADR-012 records the observed failure and
+the test-only fix; FOUNDATION_VALIDATION.md records the passing rerun.
 
 ## Pure engine (01–02, 08–11)
 

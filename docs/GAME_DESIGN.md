@@ -52,7 +52,7 @@ No client supplies a delta time, player identity or authoritative resource value
 | Base heat | +2/tick at output >=60, otherwise -1/tick; clamp 0–1000 |
 | Critical heat | At 1000, damage hull by 5 units/tick until temperature falls |
 | Shield hold | Costs 15 power while active; drains 1 energy/tick; zero energy deactivates shields |
-| Set shield | `active` boolean and/or facing front/left/right/rear; activating at zero energy rejected |
+| Set shield | Both `active` boolean and `facing` front/left/right/rear are required; activating at zero energy rejected |
 | Recharge | Requires 20 spare power; lasts 30 ticks; +6 energy/tick; 60-tick cooldown; may coexist with shield hold |
 | Shield boost | Requires 25 spare power; lasts 10 ticks; adds 20 energy/tick; 150-tick cooldown |
 

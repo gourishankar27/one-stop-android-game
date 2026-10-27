@@ -35,6 +35,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
     - `build.gradle.kts`
     - `gradle.properties`
     - `gradle/`
+      - `gradle-daemon-jvm.properties`
       - `wrapper/`
         - `LICENSE.txt`
         - `NOTICE.md`

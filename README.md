@@ -33,10 +33,11 @@ authoritative state. Private station information is projected per recipient.
 
 ## Windows setup
 
-Extract the archive to a short path such as `G:\Projects\one-job`. Open this
-directory in Codex. The archive contains source files, not a git history or
-installed dependencies. If desired, run `git init` here to create a local repository.
-Do not copy another project's `.venv` or `local.properties` into this project.
+Open the existing checkout in Codex. If starting from a source archive, extract
+it to a short path such as `G:\Projects\one-job`; archives do not include git
+history or installed dependencies. Run `git init` only if that extracted directory
+is not already a repository. Do not copy another project's `.venv` or
+`local.properties` into this project.
 
 Install Python 3.12+ and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 Use Android Studio that supports AGP 8.13.2, JDK 17, Android SDK Platform 36 and
@@ -76,6 +77,8 @@ cd android
 On macOS/Linux, the Python commands are the same and the wrapper is `./gradlew`.
 Gradle and dependency downloads need network access the first time. Local SDK
 paths belong in ignored `android/local.properties` or `ANDROID_HOME`.
+The terminal's `JAVA_HOME` and Android Studio's Gradle JDK are separate settings;
+verify both select JDK 17 with `java -version` and `.\gradlew.bat --version`.
 
 ## Development
 
@@ -90,7 +93,8 @@ verification and handoff. Do not mark a phase complete while required checks
 remain unverified. [docs/FOUNDATION_VALIDATION.md](docs/FOUNDATION_VALIDATION.md)
 records actual foundation checks and environment limitations.
 
-Start with the exact prompt in [plans/START_HERE.md](plans/START_HERE.md).
+Choose the appropriate session prompt in [plans/START_HERE.md](plans/START_HERE.md)
+using the current phase in the progress ledger.
 
 ## Documents
 

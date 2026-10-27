@@ -156,6 +156,29 @@ Alternatives considered: A root Gradle multiproject containing Python; invented 
 
 Consequences: The requested directory structure is preserved; extra TOOLCHAIN, validation and start-here documents make handoff explicit. No empty future code is mistaken for completed implementation.
 
+## ADR-012 — Explicit Espresso dependency for the foundation smoke test
+
+Date: 2026-10-27
+
+Status: Accepted
+
+Context: The included Compose smoke test failed on the available API 37 emulator
+before its assertions, with `NoSuchMethodException: InputManager.getInstance`.
+Gradle dependency insight showed that Compose UI test 1.9.4 selected Espresso
+3.5.0 transitively. The [official Espresso 3.7.0 release notes](https://developer.android.com/jetpack/androidx/releases/test#espresso-3.7.0)
+document replacing that reflective call with a system-service lookup.
+
+Decision: Declare `androidx.test.espresso:espresso-core:3.7.0` explicitly for
+instrumented tests. Retain the existing Compose BOM, Kotlin, AGP, Gradle and SDK
+baseline, and keep the original smoke-test assertions.
+
+Alternatives considered: Replace the available emulator image; upgrade the full
+Compose stack; skip the smoke test. The direct test-only dependency addresses
+the observed failure with the smallest change.
+
+Consequences: Re-run Android build/lint and the original instrumented test.
+The app's runtime behavior and server/client authority boundary are unchanged.
+
 ## Decisions still deferred
 
 External backend hosting and an open-source license are not selected. Phase 16 must start with an evidence-based local-networking decision. Phase 17 must specify its submarine mechanics after spaceship playtests. Phase 18 reevaluates current store requirements and crash-reporting needs without publishing anything.
