@@ -3,8 +3,13 @@
 ## Current code and planned boundaries
 
 Phase 00 implements a FastAPI application factory and health route, plus a single
-Compose Activity. Everything below describing rooms, projections and simulation
-is a design contract for later phases, not existing behavior.
+Compose Activity. Phase 01 adds pure frozen domain values and constructor
+validation in `one_job/domain/`: configuration, participants/assignments, actions,
+ship/round snapshots, emergency targets/records and results. Its public API is
+documented in GAME_STATE.md. It imports only the Python standard library and can
+be used without installed web dependencies, environment configuration or Android.
+Everything below describing rooms, projections and simulation is a design
+contract for later phases, not existing behavior.
 
 ```mermaid
 flowchart TD

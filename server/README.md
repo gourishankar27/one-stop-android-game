@@ -1,7 +1,10 @@
 # One Job server
 
 Current functionality: `GET /health`. Gameplay and `/ws` are planned, not exposed.
-The package uses a `src/` layout and Python 3.12+.
+The package uses a `src/` layout and Python 3.12+. Phase 01 also provides pure,
+immutable domain values with constructor validation; see the
+[model API and construction example](../docs/GAME_STATE.md#implemented-python-api).
+There is no simulation, action execution or emergency scheduling yet.
 
 From this directory:
 
@@ -27,8 +30,11 @@ Observed foundation results and tool versions are recorded in
 
 `one_job.main.create_app()` creates an isolated app for tests. The health route
 uses a Pydantic response model and reports liveness only. Later phases add
-`domain/`, `application/`, `protocol/` and more transport routes when needed.
-Those packages are deliberately absent until they contain behavior.
+`application/`, `protocol/` and more transport routes when needed. The implemented
+`domain/` package is independent of the health service and contains ordinary
+dataclasses/enums, not Pydantic DTOs. `uv run pytest tests/domain` checks its bounds,
+ownership, immutable snapshots, result invariants and isolated import. Observed
+Phase 01 results are in [DOMAIN_MODEL_VALIDATION.md](../docs/DOMAIN_MODEL_VALIDATION.md).
 
 Run one Uvicorn worker when in-memory rooms are introduced. Multiple workers
 would own different room registries. Development reload also erases rooms.

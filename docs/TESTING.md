@@ -1,7 +1,9 @@
 # Verification strategy
 
-Current observed results live in FOUNDATION_VALIDATION.md. This document defines
-the commands and behavior each layer must verify as it is implemented.
+Foundation evidence lives in FOUNDATION_VALIDATION.md; Phase 01 model and
+regression evidence lives in [DOMAIN_MODEL_VALIDATION.md](DOMAIN_MODEL_VALIDATION.md).
+This document defines the commands and behavior each layer must verify as it is
+implemented.
 
 ## Foundation
 
@@ -32,6 +34,15 @@ failed before the assertions on API 37. ADR-012 records the observed failure and
 the test-only fix; FOUNDATION_VALIDATION.md records the passing rerun.
 
 ## Pure engine (01–02, 08–11)
+
+Phase 01 has model tests in `server/tests/domain/`: config bounds/coherence,
+explicit 2/3-player station ownership, action argument domains, ship/result/round
+invariants, typed emergency records and defensive snapshot copying. The isolated
+import test launches Python with an empty environment and asserts that importing
+and constructing domain values loads no FastAPI, Pydantic, asyncio, sockets or
+other transport dependencies. Run `uv run pytest tests/domain` from `server/`.
+There is no ticking, seeded assignment, scheduling or action execution to test
+until its respective phase.
 
 Use pytest without a web server, wall-clock waits or Android. Cover configuration
 bounds, immutable snapshot behavior, role ownership, atomic rejection, exact ticks,

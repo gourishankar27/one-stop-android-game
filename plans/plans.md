@@ -6,8 +6,8 @@ evidence for every required gate, including manual gates where specified.
 
 ## Current state — 2026-10-27
 
-- Current phase: **00 — Repository Foundation, complete**.
-- Completed phases: **00**. Next eligible phase: **01**, awaiting explicit instruction.
+- Current phase: **01 — Game Domain Model, complete**.
+- Completed phases: **00, 01**. Next eligible phase: **02**, awaiting explicit instruction.
 - Delivered foundation: Python health service/package/tests, Compose placeholder,
   wrapper/tooling, architecture/game/protocol documents and all phase briefs.
 - Phase 00 evidence: repository checker; Python 3.12 locked setup, 2 tests,
@@ -15,9 +15,16 @@ evidence for every required gate, including manual gates where specified.
   and emulator launch in both themes; included instrumented smoke test passed.
 - Foundation smoke-test fix: explicit Espresso 3.7.0 replaces the incompatible
   transitive 3.5.0 in tests only (ADR-012). No gameplay implementation was added.
-- Remaining Phase 00 gates: none. Non-blocking warnings and the single-emulator
-  coverage limit are recorded with exact commands in
-  [FOUNDATION_VALIDATION.md](../docs/FOUNDATION_VALIDATION.md).
+- Delivered Phase 01: frozen validated config, participants and explicit station
+  ownership, nine action shapes, ship/round/emergency/result records and a limited
+  pure Python package API. No engine, ticking or action execution is present.
+- Phase 01 evidence: 487 backend tests passed (485 domain + 2 health); Ruff/mypy
+  and package build passed; clean wheel works without web dependencies; manual
+  2/3-player snapshot construction passed. Android build/lint and the unchanged
+  instrumented smoke test passed; placeholder launch checked in both themes.
+- Remaining Phase 01 gates: none. Exact commands, non-blocking warnings and device
+  coverage limits: [DOMAIN_MODEL_VALIDATION.md](../docs/DOMAIN_MODEL_VALIDATION.md).
+  Original foundation evidence: [FOUNDATION_VALIDATION.md](../docs/FOUNDATION_VALIDATION.md).
 - Session prompts: [START_HERE.md](START_HERE.md).
 
 ## Product goal and MVP
@@ -51,7 +58,7 @@ another ready phase explicitly; never execute more than the selected phase.
 | Status | Phase / brief | Prerequisites | Milestone |
 | --- | --- | --- | --- |
 | [x] | [00 — Repository Foundation](phase-00-repository-foundation.md) | None | Local projects and verification complete |
-| [ ] | [01 — Game Domain Model](phase-01-game-domain-model.md) | 00 | Pure validated types |
+| [x] | [01 — Game Domain Model](phase-01-game-domain-model.md) | 00 | Pure validated types |
 | [ ] | [02 — Core Game Engine](phase-02-game-engine.md) | 01 | Deterministic baseline simulation |
 | [ ] | [03 — Server Foundation](phase-03-server-foundation.md) | 02 | Typed WS/lifespan adapter |
 | [ ] | [04 — Room and Lobby System](phase-04-room-and-lobby.md) | 03 | Membership/host/ready/credential services |
@@ -97,10 +104,10 @@ update docs and decisions; mark complete only with evidence; report a concise
 handoff; stop. If blocked, leave the checkbox open and record exactly which gate
 remains. Do not turn an unavailable emulator or unavailable humans into a pass.
 
-After Phase 00 is complete, the next explicit command is:
+After Phase 01 is complete, the next explicit command is:
 
 ```text
-Implement plans/phase-01-game-domain-model.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
+Implement plans/phase-02-game-engine.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
 ```
 
 ## Deferred work
@@ -143,3 +150,14 @@ verified on the API 37 emulator. IDE-generated JDK 17 daemon criteria were
 preserved and included in final checks; unrelated editor settings were left
 untouched. Exact evidence and limitations are in FOUNDATION_VALIDATION.md.
 Phase 01 is recommended but was not started.
+
+2026-10-27 (domain model): Phase 01 completed after all required gates passed.
+Implemented pure frozen dataclasses/enums, supplied typed IDs, config validation,
+explicit 2/3-player ownership, typed actions and internally consistent immutable
+snapshots/results/emergencies. 487 tests passed; Ruff lint/format, strict mypy,
+repository checker and wheel/sdist passed. The clean wheel constructed both
+rosters without web dependencies; isolated import also passed with an empty
+environment. Android build/lint and the original smoke passed, and both themes
+were inspected after emulator launch. Existing warnings and single-emulator
+coverage remain documented in DOMAIN_MODEL_VALIDATION.md. No engine/scheduler,
+room service, wire DTO or Android gameplay was added. Phase 02 was not started.

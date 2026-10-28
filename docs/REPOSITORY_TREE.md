@@ -48,6 +48,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
     - `ARCHITECTURE.md`
     - `DECISIONS.md`
     - `FOUNDATION_VALIDATION.md`
+    - `DOMAIN_MODEL_VALIDATION.md`
     - `GAME_DESIGN.md`
     - `GAME_STATE.md`
     - `NETWORK_PROTOCOL.md`
@@ -93,6 +94,21 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
           - `health.py`
         - `main.py`
         - `py.typed`
+        - `domain/`
+          - `__init__.py`
+          - `_validation.py`
+          - `actions.py`
+          - `config.py`
+          - `models.py`
+          - `types.py`
     - `tests/`
       - `test_health.py`
+      - `domain/`
+        - `conftest.py`
+        - `test_actions.py`
+        - `test_config.py`
+        - `test_emergencies.py`
+        - `test_isolation.py`
+        - `test_models.py`
+        - `test_rounds.py`
     - `uv.lock`

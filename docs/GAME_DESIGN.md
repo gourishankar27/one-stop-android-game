@@ -5,6 +5,20 @@ Change them in configuration, record the reason, and keep deterministic tests.
 The pure engine is introduced in Phase 02; cooperative controls in Phase 09 and
 emergencies in Phase 10. This document defines intended behavior, not current code.
 
+Phase 01 now defines the data and validated settings for these rules, without
+executing them. The single source of default values is
+[`GameConfig`](../server/src/one_job/domain/config.py) (`spaceship-v1`). The tables
+below explain that baseline; update them when deliberately changing its defaults.
+Construction examples and actual type names are in [GAME_STATE.md](GAME_STATE.md).
+
+Configuration requires 60,000–120,000 ms in whole 100 ms ticks, positive action
+durations/cooldowns/event intervals, ordered interval endpoints, and one or two
+active emergencies. Initial hull is positive; active initial shields need energy
+and enough generation. Overheat settings satisfy target temperature ≤ failure
+reset < trigger ≤ critical temperature, and overload hold fits its deadline.
+Resource/rate/damage amounts use 0–1000 units; output and power costs use 0–100.
+These constructor checks reject inconsistent inputs without clamping or coercion.
+
 ## Round and communication
 
 The crew survives for 90 seconds by steering, managing heat/power and protecting

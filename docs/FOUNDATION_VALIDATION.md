@@ -4,6 +4,9 @@ Observed Windows validation of the existing foundation, starting from commit
 `2249a61` with a clean working tree. The source scaffold was preserved. The
 completion decision is recorded only in [plans/plans.md](../plans/plans.md).
 
+This is the original Phase 00 evidence. Subsequent Phase 01 model checks and
+foundation regressions are recorded in [DOMAIN_MODEL_VALIDATION.md](DOMAIN_MODEL_VALIDATION.md).
+
 ## Observed environment
 
 | Tool / prerequisite | Observed evidence |

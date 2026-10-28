@@ -9,7 +9,9 @@ short round together.
 This repository contains the **initial foundation**, not a playable game.
 Implemented: a packaged FastAPI service with `GET /health`, a minimal Compose
 home screen, developer checks, architecture documents and phase plans 00–18.
-Rooms, WebSockets, roles, the simulation and gameplay screens are planned.
+Phase 01 adds validated immutable Python domain values, including explicit
+station ownership and action shapes. Rooms, WebSockets, seeded assignment, the
+simulation and gameplay screens are planned.
 See [the progress ledger](plans/plans.md) for validation gates and next work.
 
 ## Layout
@@ -20,7 +22,7 @@ See [the progress ledger](plans/plans.md) for validation gates and next work.
 | `docs/` | Product, rules, state, architecture, protocol, UX and test references |
 | `plans/plans.md` | Phase progress, dependencies and deferred work |
 | `plans/phase-*.md` | One implementation brief per phase |
-| `server/` | Python 3.12+ package and health endpoint tests |
+| `server/` | Python 3.12+ package, pure domain values and health/domain tests |
 | `android/` | Independent Gradle Kotlin DSL project; namespace `com.onejob.game` |
 | `scripts/` | Cross-platform backend commands and repository consistency checks |
 

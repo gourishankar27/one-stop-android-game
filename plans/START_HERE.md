@@ -14,10 +14,11 @@ Finish plans/phase-00-repository-foundation.md in this existing One Job reposito
 If an emulator/device is unavailable, Codex should complete independent checks and
 leave the launch gate pending with exact instructions. It must not mark it passed.
 
-Once Phase 00 is verified and checked off, explicitly request the next phase:
+Consult the master ledger before selecting a phase. For the domain-engine session,
+after Phase 01 is verified and checked off, explicitly request:
 
 ```text
-Implement plans/phase-01-game-domain-model.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
+Implement plans/phase-02-game-engine.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
 ```
 
 Keep one phase per session. The master plan is the only progress ledger.
