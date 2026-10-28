@@ -13,6 +13,6 @@ class FoundationHomeTest {
     @Test
     fun homeExplainsFoundationStatus() {
         composeRule.onNodeWithText("ONE JOB").assertIsDisplayed()
-        composeRule.onNodeWithText("Repository foundation").assertIsDisplayed()
+        composeRule.onNodeWithText("Android foundation").assertIsDisplayed()
     }
 }

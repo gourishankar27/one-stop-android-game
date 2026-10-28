@@ -11,6 +11,9 @@ available versions. Revisit versions together in a deliberate maintenance change
 | AGP | 8.13.2 | API 36 support; avoid an unnecessary AGP 9 migration |
 | Kotlin / Compose compiler | 2.2.21 / 2.2.21 | Compiler plugin follows Kotlin version |
 | Compose libraries | BOM 2025.10.01 | Explicit compatible library set |
+| Android navigation | Navigation Compose 2.9.5 | Explicit Phase 05 shell graph; compatible with retained baseline |
+| Android lifecycle | runtime-compose, viewmodel-compose and viewmodel-savedstate 2.9.4 | Lifecycle-aware collection and navigation-entry saved state |
+| Android coroutines / JVM tests | coroutines-android/test 1.10.2; JUnit 4.13.2 | Explicit StateFlow/test-dispatcher setup in Phase 05 |
 | Instrumented tests | AndroidX runner 1.7.0, JUnit extension 1.3.0, Espresso 3.7.0 | Explicit Espresso avoids Compose's older transitive dependency failing on API 37; ADR-012 |
 | Android SDK | min 26, compile/target 36; Build Tools 35.0.0 | Practical phone baseline; supported by selected AGP |
 
@@ -20,6 +23,8 @@ Official references consulted for the baseline:
 - [Compose BOM use](https://developer.android.com/develop/ui/compose/bom)
 - [Compose BOM mapping](https://developer.android.com/develop/ui/compose/bom/bom-mapping)
 - [Android architecture guide](https://developer.android.com/topic/architecture)
+- [Navigation 2.9.5](https://developer.android.com/jetpack/androidx/releases/navigation#2.9.5)
+- [Lifecycle 2.9.4](https://developer.android.com/jetpack/androidx/releases/lifecycle#2.9.4)
 - [FastAPI testing](https://fastapi.tiangolo.com/tutorial/testing/)
 - [Gradle wrapper documentation](https://docs.gradle.org/8.13/userguide/gradle_wrapper.html)
 

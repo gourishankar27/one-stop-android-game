@@ -1,11 +1,45 @@
 # UI, navigation and interaction
 
-Only the foundation home screen exists in Phase 00. Screens below are planned.
+Phase 05 implements a navigation shell and local draft forms. Connected
+multiplayer screens below remain planned.
 Use Material 3 and ordinary phone layouts before final visual design. A portrait
 layout is the first target; preserve state on rotation and do not lock orientation
 as a substitute for lifecycle handling.
 
 ## Navigation
+
+### Current Phase 05 shell
+
+Home opens Create/Join setup or explicitly labelled previews. Setup edits only a
+local draft and offers **Check draft**; it cannot create/join or navigate into a
+fake room. The preview routes contain explanatory text, no simulated roster,
+private role, ship statistics or outcome. Every preview states that no session
+is open. System Back and the visible Back control return to Home.
+
+| Destination | Implemented contents / state |
+| --- | --- |
+| Home | Title/status, Create/Join setup and four future-screen preview links |
+| Create | Local name draft and validation hints; connection unavailable |
+| Join | Local name/code draft and validation hints; connection unavailable |
+| Lobby | Placeholder describing future server roster/readiness |
+| Role | Placeholder describing future server-assigned private instructions |
+| Gameplay | Placeholder describing future station controls/shared state |
+| Results | Placeholder describing future server-provided outcome |
+
+Create/Join have separate navigation-entry ViewModels. Name/code/check state is
+saved through `SavedStateHandle` and survives activity recreation/rotation. Popping
+the form removes its entry/draft; it does not represent leaving a membership.
+Raw nonsecret typed inputs are retained while checking trimmed/case-insensitive
+values. No session credential is saved, and no form action invokes a repository
+command or network operation. State is collected with lifecycle awareness.
+
+The existing Material 3 light/dark theme is retained. Pages use system/IME insets,
+a centered maximum content width and vertical scrolling without fixed text
+heights. The shell was inspected in portrait/landscape and at font scale 2.0;
+larger content remains reachable by scrolling. This is functional foundation UI,
+not the final game presentation.
+
+### Planned connected navigation
 
 ```mermaid
 flowchart TD
@@ -33,6 +67,7 @@ their features exist. Startup should use the platform splash rather than add an
 artificial waiting screen. Back from lobby asks before leaving membership; back
 from gameplay offers leave confirmation. Canceling that dialog keeps the session.
 Do not replace server leave semantics with local navigation.
+Those membership/leave dialogs do not apply to the current session-free previews.
 
 ## Screen contract
 

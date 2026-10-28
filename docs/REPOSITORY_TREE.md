@@ -19,6 +19,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
               - `onejob/`
                 - `game/`
                   - `FoundationHomeTest.kt`
+                  - `ShellNavigationTest.kt`
         - `main/`
           - `AndroidManifest.xml`
           - `java/`
@@ -26,12 +27,30 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
               - `onejob/`
                 - `game/`
                   - `MainActivity.kt`
+                  - `app/`
+                    - `OneJobApp.kt`
+                    - `OneJobApplication.kt`
+                  - `data/`
+                    - `GameRepository.kt`
+                  - `navigation/`
+                    - `AppDestination.kt`
                   - `ui/`
+                    - `ShellScreens.kt`
+                    - `forms/`
+                      - `DraftValidation.kt`
+                      - `RoomFormScreen.kt`
+                      - `RoomFormViewModel.kt`
                     - `theme/`
                       - `Theme.kt`
           - `res/`
             - `values/`
               - `strings.xml`
+        - `test/`
+          - `java/com/onejob/game/`
+            - `MainDispatcherRule.kt`
+            - `ui/forms/`
+              - `DraftValidationTest.kt`
+              - `RoomFormViewModelTest.kt`
     - `build.gradle.kts`
     - `gradle.properties`
     - `gradle/`
@@ -52,6 +71,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
     - `ENGINE_VALIDATION.md`
     - `SERVER_FOUNDATION_VALIDATION.md`
     - `LOBBY_VALIDATION.md`
+    - `ANDROID_FOUNDATION_VALIDATION.md`
     - `protocol-fixtures/`
       - `phase03.json`
       - `phase04.json`

@@ -7,14 +7,16 @@ short round together.
 > Everyone has one job. Everything goes wrong at the same time.
 
 This repository contains the **initial foundation**, not a playable game.
-Implemented: a packaged FastAPI service with `GET /health`, a minimal Compose
-home screen, developer checks, architecture documents and phase plans 00–18.
+Implemented: a packaged FastAPI service with `GET /health`, a Compose navigation
+shell, developer checks, architecture documents and phase plans 00–18.
 Phase 01 adds validated immutable Python domain values, including explicit
 station ownership and action shapes. Phase 02 adds the synchronous baseline
 engine for power, lane movement, coolant, heat/damage and round timing. Phase 03
 adds typed `/ws` ping/pong/errors, bounded connection cleanup and a fixture engine
 adapter. Phase 04 adds authoritative rooms/lobbies, admission/resume credentials,
-readiness, host transfer and expiry. Live socket gameplay, seeded assignment,
+readiness, host transfer and expiry. Phase 05 adds the Android shell, local
+Create/Join drafts and explicit future-screen previews with retained input state.
+Android networking, live socket gameplay, seeded assignment,
 emergencies, remaining controls and gameplay screens are planned.
 See [the progress ledger](plans/plans.md) for validation gates and next work.
 
@@ -71,8 +73,8 @@ No database, Docker, accounts or credentials are needed.
 
 Open **`android/`**, not the repository root, in Android Studio. Select JDK 17
 as the Gradle JDK, install the SDK components above and sync. Run the `app`
-configuration on an Android 8.0+ device/emulator. The screen explains foundation
-status; it does not connect to the backend yet.
+configuration on an Android 8.0+ device/emulator. The shell explains unavailable
+online play and previews future screens; it does not connect to the backend yet.
 
 ```powershell
 cd android

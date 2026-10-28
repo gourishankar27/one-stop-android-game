@@ -5,6 +5,7 @@ regression evidence lives in [DOMAIN_MODEL_VALIDATION.md](DOMAIN_MODEL_VALIDATIO
 Phase 02 engine/replay evidence lives in [ENGINE_VALIDATION.md](ENGINE_VALIDATION.md).
 Phase 03 transport evidence lives in [SERVER_FOUNDATION_VALIDATION.md](SERVER_FOUNDATION_VALIDATION.md).
 Phase 04 room/lobby evidence lives in [LOBBY_VALIDATION.md](LOBBY_VALIDATION.md).
+Phase 05 Android shell evidence lives in [ANDROID_FOUNDATION_VALIDATION.md](ANDROID_FOUNDATION_VALIDATION.md).
 This document defines the commands and behavior each layer must verify as it is
 implemented.
 
@@ -31,7 +32,7 @@ with `uv build` before handing off the foundation. Do not commit build outputs.
 From `android/`: `./gradlew :app:assembleDebug :app:lintDebug :app:testDebugUnitTest`.
 Use `./gradlew.bat` on Windows. `:app:connectedDebugAndroidTest` requires a device.
 A successful `testDebugUnitTest NO-SOURCE` is not evidence of Android unit tests.
-The included Compose instrumented test checks that the foundation screen launches.
+The Compose tests check shell launch/navigation and retained form inputs.
 Keep its explicit Espresso 3.7.0 dependency: Compose's older transitive version
 failed before the assertions on API 37. ADR-012 records the observed failure and
 the test-only fix; FOUNDATION_VALIDATION.md records the passing rerun.
@@ -129,6 +130,21 @@ terminal result event. Use actual test sockets to prove DTO/domain integration;
 do not replace all integration tests with mocked route calls.
 
 ## Android (05 onward)
+
+Phase 05: `:app:testDebugUnitTest` runs 8 tests (3 client draft-hint tests and
+5 ViewModel/StateFlow tests). `MainDispatcherRule` supplies a coroutine test
+dispatcher; fake-repository status changes use virtual scheduling. Tests verify
+Unicode/control/code hints, immutable state updates, validation recovery, current
+repository status after restoration, whitelisted saved inputs and independent
+Create/Join entries. No network command exists to submit a draft.
+
+`:app:connectedDebugAndroidTest` runs 5 tests on a device: Home smoke plus four
+shell tests. They traverse future destinations and system Back, check local
+forms, recreate the Activity with retained Join inputs and verify no INTERNET
+permission. They test navigation/state behavior, not one assertion per placeholder.
+The original Espresso fix remains. Manual verification additionally checks actual
+device rotation and font scale 2.0 with scrolling; document what was inspected.
+These are shell tests, not real multiplayer or a full process-death fault matrix.
 
 Local JVM tests cover ViewModel StateFlow transitions with a coroutine test
 dispatcher, repository connection state, typed decoding, request correlation,

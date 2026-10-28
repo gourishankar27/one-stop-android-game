@@ -14,11 +14,11 @@ Finish plans/phase-00-repository-foundation.md in this existing One Job reposito
 If an emulator/device is unavailable, Codex should complete independent checks and
 leave the launch gate pending with exact instructions. It must not mark it passed.
 
-Consult the master ledger before selecting a phase. For the Android foundation
-session, after Phase 04 is verified and checked off, explicitly request:
+Consult the master ledger before selecting a phase. For the Android networking
+session, after Phase 05 is verified and checked off, explicitly request:
 
 ```text
-Implement plans/phase-05-android-foundation.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
+Implement plans/phase-06-android-networking.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
 ```
 
 Keep one phase per session. The master plan is the only progress ledger.

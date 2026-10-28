@@ -6,8 +6,8 @@ evidence for every required gate, including manual gates where specified.
 
 ## Current state — 2026-10-28
 
-- Current phase: **04 — Room and Lobby System, complete**.
-- Completed phases: **00, 01, 02, 03, 04**. Next eligible phase: **05**, awaiting explicit instruction.
+- Current phase: **05 — Android Foundation, complete**.
+- Completed phases: **00, 01, 02, 03, 04, 05**. Next eligible phase: **06**, awaiting explicit instruction.
 - Delivered foundation: Python health service/package/tests, Compose placeholder,
   wrapper/tooling, architecture/game/protocol documents and all phase briefs.
 - Phase 00 evidence: repository checker; Python 3.12 locked setup, 2 tests,
@@ -60,6 +60,19 @@ evidence for every required gate, including manual gates where specified.
   limitations: [LOBBY_VALIDATION.md](../docs/LOBBY_VALIDATION.md). Dependency pins,
   pure engine and Android sources were preserved. Android builds/device checks
   were not rerun for this backend-only phase. No later phase was started.
+- Delivered Phase 05: single-Activity navigation shell, explicit Home/Create/Join/
+  Lobby/Role/Gameplay/Results routes, constructor wiring/unavailable repository,
+  local draft ViewModels, immutable/lifecycle-aware StateFlow and nonsecret saved
+  inputs. Future flows are truthful previews; no Android transport was added.
+- Phase 05 evidence: Android debug build/lint passed; 8 JVM and 5 instrumented
+  tests passed on the API 37 emulator. All routes/Back, actual rotation and font
+  scale 2.0 were checked; draft inputs survived and controls remained reachable.
+  Repository checks and backend regressions passed (851 tests, Ruff, strict mypy).
+  Pinned Gradle/AGP/Kotlin/Compose/SDK baseline and prior Phase 04 work were preserved.
+- Remaining Phase 05 gates: none. Exact commands, 11 lint warnings, device scope
+  and screenshots: [ANDROID_FOUNDATION_VALIDATION.md](../docs/ANDROID_FOUNDATION_VALIDATION.md).
+  Emulator settings were restored and the verification emulator stopped. No
+  networking, live lobby/gameplay, assets or Phase 06 behavior was implemented.
 
 ## Product goal and MVP
 
@@ -96,7 +109,7 @@ another ready phase explicitly; never execute more than the selected phase.
 | [x] | [02 — Core Game Engine](phase-02-game-engine.md) | 01 | Deterministic baseline simulation |
 | [x] | [03 — Server Foundation](phase-03-server-foundation.md) | 02 | Typed WS/lifespan adapter |
 | [x] | [04 — Room and Lobby System](phase-04-room-and-lobby.md) | 03 | Membership/host/ready/credential services |
-| [ ] | [05 — Android Foundation](phase-05-android-foundation.md) | 00; default after 04 | Navigation/state boundaries |
+| [x] | [05 — Android Foundation](phase-05-android-foundation.md) | 00; default after 04 | Navigation/state boundaries |
 | [ ] | [06 — Android Networking](phase-06-android-networking.md) | 03, 04, 05 | Repository and typed socket |
 | [ ] | [07 — Lobby UI](phase-07-lobby-ui.md) | 04, 06 | Real multi-phone lobby |
 | [ ] | [08 — Role System](phase-08-role-system.md) | 02, 07 | Private station ownership/briefing |
@@ -138,10 +151,10 @@ update docs and decisions; mark complete only with evidence; report a concise
 handoff; stop. If blocked, leave the checkbox open and record exactly which gate
 remains. Do not turn an unavailable emulator or unavailable humans into a pass.
 
-After Phase 04 is complete, the next explicit command is:
+After Phase 05 is complete, the next explicit command is:
 
 ```text
-Implement plans/phase-05-android-foundation.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
+Implement plans/phase-06-android-networking.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
 ```
 
 ## Deferred work
@@ -219,3 +232,14 @@ three-client check agreed on roster/revisions through join/ready/leave/resume/ho
 transfer; the server shut down cleanly. Exact evidence is in LOBBY_VALIDATION.md.
 The existing TestClient warning remains. Android/gameplay were not implemented
 or revalidated in this phase. Phase 05 is recommended and was not started.
+
+2026-10-28 (Android foundation): Phase 05 completed after build/lint, 8 JVM tests,
+5 device tests and manual navigation/rotation/font gates passed. The shell has
+seven explicit destinations, constructor-injected unavailable repository state,
+local draft validation and saved nonsecret form inputs. Device recreation and
+physical rotation retained the Join draft. System font scale 2.0 stayed readable
+and scrollable; original settings were restored and the read-only emulator stopped.
+Repository/backend checks also passed, including 851 tests. Exact evidence and
+the retained 11 lint warnings are in ANDROID_FOUNDATION_VALIDATION.md. Prior
+uncommitted Phase 04 work was preserved. No network call, fake working room or
+Android game authority was added. Phase 06 is recommended and was not started.

@@ -1,11 +1,16 @@
-# Android scaffold
+# Android foundation
 
-Open this directory in Android Studio. The only screen is a Compose foundation
-placeholder; no networking, navigation, repository or gameplay is implemented.
+Open this directory in Android Studio. Phase 05 has one Activity, Home, local
+Create/Join drafts and explicit Lobby/Role/Gameplay/Results previews. Setup checks
+nonsecret typed inputs locally; no room/session is created. All online actions
+remain unavailable. The app has no network permission, socket or gameplay rules.
 
 Toolchain: JDK 17, Gradle 8.13, AGP 8.13.2, Kotlin/Compose compiler 2.2.21,
 Compose BOM 2025.10.01, compile/target SDK 36, min SDK 26.
 Install Platform 36 and Build Tools 35.0.0 through SDK Manager.
+Navigation Compose 2.9.5, Lifecycle Compose/ViewModel/SavedState 2.9.4,
+coroutines-android/test 1.10.2 and JUnit 4.13.2 are explicit. The original toolchain,
+Compose BOM and Espresso 3.7.0 pins remain unchanged.
 
 The official Gradle wrapper scripts and JAR are included. Run:
 
@@ -16,12 +21,14 @@ The official Gradle wrapper scripts and JAR are included. Run:
 ```
 
 The last command requires a device or emulator visible in `adb devices -l`.
-There is currently no Android unit-test behavior; the instrumented test checks
-the placeholder home screen. Espresso 3.7.0 is explicit because the Compose test
+JVM tests check draft validation, StateFlow updates with a fake repository,
+nonsecret restoration and independent form state. Instrumented tests check Home,
+all preview routes/system Back, Create/Join behavior, activity recreation with
+retained inputs and absence of network permission. Espresso 3.7.0 is explicit because the Compose test
 dependency otherwise selects 3.5.0, which fails during setup on API 37; see
 [ADR-012](../docs/DECISIONS.md#adr-012--explicit-espresso-dependency-for-the-foundation-smoke-test).
-Expect `testDebugUnitTest NO-SOURCE`, not a count of passed JVM tests.
-Unit tests arrive with stateful client behavior in Phase 05.
+Phase 05 observed 8 JVM tests and 5 instrumented tests passing; JVM tests are no
+longer `NO-SOURCE`.
 On Unix, use `./gradlew` (run `chmod +x gradlew` if extraction loses permissions).
 
 Gradle uses `ANDROID_HOME` or an ignored `local.properties` containing
@@ -36,11 +43,20 @@ Settings → Build, Execution, Deployment → Build Tools → Gradle; the
 `GRADLE_LOCAL_JAVA_HOME` option uses ignored `.gradle/config.properties`.
 See the [official JDK configuration guide](https://developer.android.com/build/jdks).
 
-Inspect the placeholder in both system themes. Lint reports appear in
+The package wiring is `MainActivity → app/OneJobApp → ui` with navigation-entry
+form ViewModels and constructor-injected `data/GameRepository`. The production
+repository is explicitly unavailable; fakes appear only in tests. State collection
+is lifecycle-aware. SavedStateHandle stores only name/code/check presentation;
+there are no credential arguments or saved tokens. See
+[architecture](../docs/ARCHITECTURE.md#android) and [current UI](../docs/UI_UX.md#current-phase-05-shell).
+
+Manual check: open all seven destinations, use system/visible Back, type a Join
+draft and rotate. Change system font size, scroll to every control and confirm the
+draft remains. Restore device settings afterwards. Lint reports appear in
 `app/build/reports/lint-results-debug.html`; instrumented results appear in
 `app/build/reports/androidTests/connected/debug/index.html`. Actual validation
 evidence and any warnings are recorded in
-[FOUNDATION_VALIDATION.md](../docs/FOUNDATION_VALIDATION.md).
+[ANDROID_FOUNDATION_VALIDATION.md](../docs/ANDROID_FOUNDATION_VALIDATION.md).
 
 Networking permissions and debug-only cleartext allowances belong to Phase 06.
 The main manifest currently disables cleartext traffic and backup. There are

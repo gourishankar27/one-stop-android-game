@@ -134,9 +134,31 @@ stations' detailed warnings or target instructions to shared messages.
 
 ## Android
 
+Phase 05 uses `MainActivity` as the single host. `app/OneJobApplication.kt` owns
+a small constructor-injected `AppContainer`, whose current repository is
+`data/UnavailableGameRepository`. `GameRepository` exposes immutable connection
+`StateFlow` only; no socket/data source or create/join command exists yet.
+Phase 06 will extend this boundary with typed authoritative session snapshots
+and a socket-owning data source. There is no Android engine or ship simulation.
+
+`app/OneJobApp.kt` assembles a Navigation Compose graph using the explicit
+`navigation/AppDestination` enum. Routes contain no parameters or credentials.
+Home opens local Create/Join drafts or clearly labelled future-screen previews;
+navigation alone never grants membership. `ui/ShellScreens.kt` provides stateless
+scrolling/inset-aware pages under the existing `ui/theme` Material 3 theme.
+
+`ui/forms/RoomFormViewModel` receives repository, form kind and SavedStateHandle
+through an ordinary navigation-entry factory. Immutable UI StateFlow combines
+typed nonsecret draft inputs with repository connection status. Intents only edit
+or check local drafts. `DraftValidation` provides presentation hints (including
+Unicode character counting/ASCII code hints); server validation remains authority.
+Compose collects with `collectAsStateWithLifecycle`. Only draft name/code/check
+state is saved; connection status is read anew from the repository. A popped entry
+discards its draft. No dependency-injection framework/use-case layer is needed.
+
 Use one Activity. Compose screens consume immutable UI state and emit intents.
 ViewModels transform repository state using coroutines and StateFlow.
-The repository owns the current session and typed server snapshots; a WebSocket
+The future repository owns the current session and typed server snapshots; a WebSocket
 data source owns one socket, serialization and bounded I/O. Use lifecycle-aware
 collection; cancel work when its owner ends. Use manual app-level dependency
 assembly initially, not global mutable singleton screens or a DI framework.
