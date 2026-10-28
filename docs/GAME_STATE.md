@@ -1,8 +1,9 @@
 # State, terminology and lifecycle
 
 Phase 01 implements immutable, validated Python domain values in
-`server/src/one_job/domain/`. Rules that advance or mutate a round, room services
-and wire projections remain later work. Wire field names live in
+`server/src/one_job/domain/`. Phase 02 adds the synchronous baseline engine
+described below. Room services and wire projections remain later work. Wire field
+names live in
 NETWORK_PROTOCOL.md; internal snapshots are not serialization contracts.
 
 | Term | Meaning / owner |
@@ -14,7 +15,7 @@ NETWORK_PROTOCOL.md; internal snapshots are not serialization contracts.
 | `Role` | Station: `pilot`, `engineer`, `shields` |
 | `RoleAssignment` | Frozen participant IDs plus a copied, read-only `Role → PlayerId` mapping; exactly one owner per station |
 | `GameSession` | Planned application context grouping round/config/engine/participants; not implemented |
-| `GameEngine` | Planned Phase 02 synchronous simulation with seeded RNG; not implemented |
+| `GameEngine` | Phase 02 single-owner synchronous baseline: start, three actions, heat/damage, cooldowns, fixed ticks and terminal results |
 | `GameState` | Frozen internal snapshot of config, participants, assignments, ship, round and active emergencies |
 | `ShipSystem` | Conceptual subsystem; do not require a base class in Phase 01 |
 | `GameConfig` | Validated frozen settings in `domain/config.py`; single source of provisional balance defaults |
@@ -45,7 +46,7 @@ round ID and seed; room code, player IDs and host stay stable.
 
 ## Implemented Python API
 
-The package root exports `GameConfig`, `GameState`, `Player`, `PlayerAction`,
+The package root exports `GameEngine`, `GameConfig`, `GameState`, `Player`, `PlayerAction`,
 `PlayerId`, `Role`, `RoleAssignment`, `RoundState` and `ShipState`. Import concrete
 actions from `one_job.domain.actions`; enums/IDs from `one_job.domain.types`;
 cooldowns, emergency targets and results from `one_job.domain.models`.
@@ -106,9 +107,10 @@ constructor parameters match the action parameter domains in the protocol:
 | `SetShield` | Required `active: bool`, `facing: ShieldFacing` | Shields |
 | `RechargeShield`, `ShieldBoost` | None | Shields |
 
-Actions contain no actor/player ID and do not apply themselves. Stage, station
-permission, resource and cooldown checks when executing them belong to the future
-engine. No parser, socket DTO or arbitrary action dictionary is added.
+Actions contain no actor/player ID and do not apply themselves. The Phase 02
+engine checks stage, station ownership, values, resources and cooldowns for its
+three supported actions. The other six records remain unavailable for execution.
+No parser, socket DTO or arbitrary action dictionary is added.
 
 `Emergency.target` is an `AsteroidTarget(impact_lane, required_facing)`,
 `OverheatingTarget(max_output, max_temperature)` or
@@ -132,7 +134,66 @@ Victory/abort require surviving hull; defeat requires zero hull. Briefing timeou
 has zero simulated survival time. Composing a terminal round checks matching
 elapsed time and outcome: victory requires exactly the configured duration, while
 abort cannot replace an expired timer. Hull destruction at timer expiration is
-a valid defeat. These are value invariants; no terminal transition is executed.
+a valid defeat. Model constructors check these value invariants; the engine below
+executes the baseline transitions.
+
+## Phase 02 engine API
+
+`GameEngine(config, seed, players, assignments, *, round_id)` accepts a strict
+integer seed, an explicit participant roster/assignment and a caller-supplied
+round ID. It owns a private `random.Random(seed)`. No IDs, role assignments or
+random events are generated. Participant sequences are frozen at construction;
+there are no membership/reconfiguration methods. `GameEngine` is exported from
+the package root; result/event types and `ENGINE_VERSION` live in `domain/engine.py`.
+
+| Method / property | Behavior |
+| --- | --- |
+| `snapshot() → GameState` | Immutable internal snapshot; safe to retain while the engine replaces its current state |
+| `start() → GameState` | Briefing to running at tick zero; repeated starts raise `ValueError` |
+| `apply_action(actor_id, action) → ActionResult` | Applies `SetEnginePower`, `MoveLane` or `Coolant` immediately, in caller order |
+| `tick(steps=1) → TickResult` | Positive integer count of 100 ms steps; stops at the first terminal tick |
+| `accepted_actions` | Immutable tuple of `ActionApplied(tick_index, order, actor_id, action)` records |
+
+An `ActionResult` has `code`, derived `accepted`, and `events`. Accepted commands
+return code `accepted` with exactly one `ActionApplied`; rejections have no events
+and leave snapshots, accepted-order history and RNG unchanged. Rejection codes are
+`invalid_stage`, `not_participant`, `invalid_action`, `feature_unavailable`,
+`not_role_owner`, `insufficient_power`, `cooldown` and `lane_boundary`.
+The engine checks stage, then participant, known/supported shape, typed arguments,
+ownership and action constraints. The six reserved Phase 09 actions return
+`feature_unavailable` for any valid participant while running. Unknown/malformed
+actions return `invalid_action`. These domain codes are internal; a future
+transport adapter must map them to the versioned wire contract explicitly.
+
+The snapshot's `tick_index=n` counts completed steps. Commands at boundary `n`
+are applied in call order before effects for step `n+1`. Their trace uses boundary
+`n` and a round-wide, one-based accepted `order`; rejected commands consume no
+order. The caller drains its ordered commands before calling `tick()`. There is
+no queue, socket, ticker or wall-clock scheduler inside the engine.
+
+Each step applies base heat/cooling and clamps temperature, then critical heat
+damage and hull clamping, then ages movement/coolant cooldowns, advances the tick,
+and checks terminal conditions. A cooldown set to C at boundary n becomes legal
+again at boundary n+C. Thus a move at zero is unavailable after one step and
+available after two; coolant becomes available after 30 default steps.
+
+`TickResult.state` is the new snapshot and `TickResult.events` contains one
+`RoundEnded(result)` only on the transition to terminal. Hull destruction wins
+over time expiration on the same step. Subsequent valid ticks return the same
+terminal snapshot with no events, and actions return `invalid_stage`. Invalid
+step counts (zero, negative, bool, float/nonfinite or string) and ticking before
+start raise `ValueError` without mutation. There is no delta-time API.
+
+Only temperature/hull evolve continuously in Phase 02. Shield resources and flags
+retain their configured initial values; an existing configured power reservation
+still constrains output changes. Evade, boosts, shield controls/passive dynamics,
+shutdown and emergencies are not simulated. The RNG is seeded but never drawn,
+so changing only the seed has no observable gameplay effect yet.
+
+Snapshots, action traces and engine events are internal data, not public/player
+projections. Never serialize or broadcast these full objects. Phase 03 will adapt
+this API; room ownership, projection privacy and live running orchestration are
+implemented in their selected later phases.
 
 ## Authoritative ship model
 

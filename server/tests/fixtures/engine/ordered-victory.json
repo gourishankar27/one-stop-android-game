@@ -1,0 +1,32 @@
+{
+  "engine_version": "spaceship-engine-v1",
+  "config_version": "spaceship-v1",
+  "python_version": "3.12.10",
+  "seed": 12345,
+  "round_id": "00000000-0000-0000-0000-000000000010",
+  "players": [
+    {"id": "00000000-0000-0000-0000-000000000001", "name": "Crew 1"},
+    {"id": "00000000-0000-0000-0000-000000000002", "name": "Crew 2"},
+    {"id": "00000000-0000-0000-0000-000000000003", "name": "Crew 3"}
+  ],
+  "owners": {"pilot": 0, "engineer": 1, "shields": 2},
+  "config": {},
+  "requests": [
+    {"tick": 0, "actor": 1, "type": "set_engine_power", "value": 70, "code": "accepted", "order": 1},
+    {"tick": 0, "actor": 0, "type": "move_lane", "direction": "left", "code": "accepted", "order": 2},
+    {"tick": 0, "actor": 1, "type": "coolant", "code": "accepted", "order": 3},
+    {"tick": 0, "actor": 0, "type": "move_lane", "direction": "left", "code": "cooldown"},
+    {"tick": 1, "actor": 0, "type": "move_lane", "direction": "right", "code": "cooldown"},
+    {"tick": 2, "actor": 0, "type": "move_lane", "direction": "left", "code": "lane_boundary"},
+    {"tick": 2, "actor": 0, "type": "move_lane", "direction": "right", "code": "accepted", "order": 4},
+    {"tick": 30, "actor": 1, "type": "coolant", "code": "accepted", "order": 5},
+    {"tick": 50, "actor": 1, "type": "set_engine_power", "value": 40, "code": "accepted", "order": 6}
+  ],
+  "checkpoints": [
+    {"tick": 0, "temperature": 100, "hull": 1000, "lane": "left"},
+    {"tick": 2, "temperature": 104, "hull": 1000, "lane": "center"},
+    {"tick": 30, "temperature": 0, "hull": 1000, "lane": "center"},
+    {"tick": 50, "temperature": 40, "hull": 1000, "lane": "center"}
+  ],
+  "expected_end": {"tick": 900, "outcome": "victory", "hull": 1000, "temperature": 0}
+}

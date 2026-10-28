@@ -1,0 +1,19 @@
+{
+  "engine_version": "spaceship-engine-v1",
+  "config_version": "spaceship-v1",
+  "python_version": "3.12.10",
+  "seed": 6789,
+  "round_id": "00000000-0000-0000-0000-000000000020",
+  "players": [
+    {"id": "00000000-0000-0000-0000-000000000001", "name": "Crew 1"},
+    {"id": "00000000-0000-0000-0000-000000000002", "name": "Crew 2"}
+  ],
+  "owners": {"pilot": 0, "engineer": 1, "shields": 1},
+  "config": {"initial_temperature": 999, "initial_engine_output": 60, "initial_hull": 11},
+  "requests": [],
+  "checkpoints": [
+    {"tick": 1, "temperature": 1000, "hull": 6, "lane": "center"},
+    {"tick": 2, "temperature": 1000, "hull": 1, "lane": "center"}
+  ],
+  "expected_end": {"tick": 3, "outcome": "defeat", "hull": 0, "temperature": 1000}
+}

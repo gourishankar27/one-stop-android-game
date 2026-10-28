@@ -10,8 +10,12 @@ This repository contains the **initial foundation**, not a playable game.
 Implemented: a packaged FastAPI service with `GET /health`, a minimal Compose
 home screen, developer checks, architecture documents and phase plans 00–18.
 Phase 01 adds validated immutable Python domain values, including explicit
-station ownership and action shapes. Rooms, WebSockets, seeded assignment, the
-simulation and gameplay screens are planned.
+station ownership and action shapes. Phase 02 adds the synchronous baseline
+engine for power, lane movement, coolant, heat/damage and round timing. Phase 03
+adds typed `/ws` ping/pong/errors, bounded connection cleanup and a fixture engine
+adapter. Rooms, live socket gameplay, seeded assignment, emergencies, remaining
+controls and gameplay
+screens are planned.
 See [the progress ledger](plans/plans.md) for validation gates and next work.
 
 ## Layout
@@ -22,7 +26,7 @@ See [the progress ledger](plans/plans.md) for validation gates and next work.
 | `docs/` | Product, rules, state, architecture, protocol, UX and test references |
 | `plans/plans.md` | Phase progress, dependencies and deferred work |
 | `plans/phase-*.md` | One implementation brief per phase |
-| `server/` | Python 3.12+ package, pure domain values and health/domain tests |
+| `server/` | Python 3.12+ package, pure engine, typed transport and backend tests |
 | `android/` | Independent Gradle Kotlin DSL project; namespace `com.onejob.game` |
 | `scripts/` | Cross-platform backend commands and repository consistency checks |
 
@@ -59,6 +63,7 @@ In another terminal:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
+uv run --project server python server/examples/websocket_smoke.py
 ```
 
 Expected JSON: `{"status":"ok","service":"one-job-server"}`.

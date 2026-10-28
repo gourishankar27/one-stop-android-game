@@ -49,6 +49,10 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
     - `DECISIONS.md`
     - `FOUNDATION_VALIDATION.md`
     - `DOMAIN_MODEL_VALIDATION.md`
+    - `ENGINE_VALIDATION.md`
+    - `SERVER_FOUNDATION_VALIDATION.md`
+    - `protocol-fixtures/`
+      - `phase03.json`
     - `GAME_DESIGN.md`
     - `GAME_STATE.md`
     - `NETWORK_PROTOCOL.md`
@@ -86,12 +90,29 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
     - `.python-version`
     - `README.md`
     - `pyproject.toml`
+    - `logging.json`
+    - `examples/`
+      - `engine_round.py`
+      - `websocket_smoke.py`
     - `src/`
       - `one_job/`
         - `__init__.py`
         - `api/`
           - `__init__.py`
           - `health.py`
+          - `websocket.py`
+        - `application/`
+          - `__init__.py`
+          - `connections.py`
+          - `engine_adapter.py`
+          - `limits.py`
+          - `outbox.py`
+          - `timing.py`
+        - `protocol/`
+          - `__init__.py`
+          - `envelopes.py`
+          - `mapping.py`
+          - `messages.py`
         - `main.py`
         - `py.typed`
         - `domain/`
@@ -99,16 +120,36 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
           - `_validation.py`
           - `actions.py`
           - `config.py`
+          - `engine.py`
           - `models.py`
+          - `rules.py`
           - `types.py`
     - `tests/`
+      - `__init__.py`
+      - `conftest.py`
+      - `support.py`
       - `test_health.py`
+      - `api/`
+        - `test_websocket.py`
+      - `application/`
+        - `test_connections.py`
+        - `test_engine_adapter.py`
+        - `test_outbox.py`
+      - `protocol/`
+        - `test_envelopes.py`
       - `domain/`
         - `conftest.py`
         - `test_actions.py`
         - `test_config.py`
         - `test_emergencies.py`
+        - `test_engine.py`
+        - `test_engine_replay.py`
         - `test_isolation.py`
         - `test_models.py`
         - `test_rounds.py`
+      - `fixtures/`
+        - `engine/`
+          - `ordered-victory.json`
+          - `heat-defeat.json`
+          - `hull-timer-tie.json`
     - `uv.lock`

@@ -9,6 +9,7 @@ description = "Authoritative backend foundation for One Job"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "anyio>=4,<5",
     "fastapi>=0.115,<1",
     "pydantic>=2.9,<3",
     "uvicorn>=0.30,<1",

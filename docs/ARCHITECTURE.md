@@ -8,8 +8,39 @@ validation in `one_job/domain/`: configuration, participants/assignments, action
 ship/round snapshots, emergency targets/records and results. Its public API is
 documented in GAME_STATE.md. It imports only the Python standard library and can
 be used without installed web dependencies, environment configuration or Android.
-Everything below describing rooms, projections and simulation is a design
-contract for later phases, not existing behavior.
+Phase 02 adds `domain/engine.py` and `rules.py`: a synchronous, single-owner
+baseline with power/lane/coolant intents, fixed-step heat/hull/cooldown updates,
+immutable snapshots, ordered accepted-command records and one terminal event.
+It consumes no clocks, environment configuration or network libraries. Room
+services and the complete simulation remain later work.
+
+The engine receives config, integer seed, roster, assignments and round ID.
+`start()` returns the running tick-zero snapshot; `apply_action()` returns a typed
+accept/reject result; `tick(steps)` returns state and terminal events; `snapshot()`
+and `accepted_actions` expose immutable internal values. One caller owns it and
+applies commands in authoritative order before advancing whole steps. There is
+no concurrent queue or scheduler in the engine. Phase 03 maps its typed action
+results and snapshots to explicit boundary DTOs rather than serializing them.
+
+Phase 03 implements `/ws` for ping/pong and structured errors. Reserved commands
+are gated with `feature_unavailable` before future business decoding. The route
+only delegates to a lifespan-owned `ConnectionManager`; each `create_app` lifespan
+constructs its own manager, injected monotonic clock and connection settings.
+Each connection supervises reader, writer, admission deadline and close signal.
+Disconnect/shutdown cancels and awaits owned tasks; bounded cleanup is shielded
+against ASGI level cancellation. No registry, credentials or game task is created.
+`server/logging.json` configures allowlisted connection logs in the dev launcher.
+
+`application/engine_adapter.py` accepts an explicit engine fixture and `TickSource`.
+It maps three existing typed action DTOs into domain values, typed domain rejection
+codes into safe errors, and public fields/percentages into `PublicRoundView`.
+The baseline has no emergencies, so public warnings are empty. It creates no
+tasks, and its awaited `step()` advances exactly one domain tick after a supplied
+tick signal. `FixedStepTicker` is pull-driven with injected 100ms deadlines.
+The socket never calls this adapter; future room ownership will orchestrate it.
+Full station projections, live ticking/catch-up policy and event dispatch remain
+later phases. The current public-state DTO prepares coalescing tests, not observer
+admission or public broadcasts.
 
 ```mermaid
 flowchart TD
@@ -57,13 +88,23 @@ engine and drains accumulated time in fixed steps. Allow at most five catch-up
 ticks per scheduler turn; persistent lag aborts the round with `server_overload`
 instead of changing the physics timestep. State broadcasts target 5 Hz initially.
 
-Commands get an authoritative `(tick_index, order)` at the room boundary and are
-applied before that tick's continuous effects. Use integers for resource units.
+Commands get an authoritative `(tick_index, order)` at the room boundary. At
+completed-tick boundary n, apply ordered commands before continuous step n+1.
+Use integers for resource units.
 Round config, engine version, Python version, seed and accepted action sequence
 are sufficient for same-version replay; logging just a seed is insufficient.
 Use a private `random.Random(seed)` instance. Do not use UUID randomness for
 gameplay. UUIDs and secure session credentials are separate infrastructure.
 Cross-version bit-identical replay is not promised.
+
+For the Phase 02 API, n means completed steps: actions recorded at boundary n
+precede effects for step n+1. Accepted order is one-based across the round;
+rejected actions change neither state, order nor RNG. The engine creates a private
+seeded generator but does not draw from it until a later phase adds randomness.
+`tests/fixtures/engine/` records engine/config/Python versions, config overrides,
+seed, fixed roster/round IDs, assignments, tick-indexed commands and accepted
+order. The replay harness checks every snapshot, result and event twice, then
+replays accepted actions alone to prove rejected requests have no effect.
 
 ## Information boundaries
 

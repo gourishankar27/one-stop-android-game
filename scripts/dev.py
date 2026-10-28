@@ -45,6 +45,12 @@ def main() -> int:
                 "127.0.0.1",
                 "--port",
                 "8000",
+                "--workers",
+                "1",
+                "--ws-max-size",
+                "16384",
+                "--log-config",
+                "logging.json",
             ]
         ]
 

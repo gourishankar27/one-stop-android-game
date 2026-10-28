@@ -2,6 +2,8 @@
 
 Foundation evidence lives in FOUNDATION_VALIDATION.md; Phase 01 model and
 regression evidence lives in [DOMAIN_MODEL_VALIDATION.md](DOMAIN_MODEL_VALIDATION.md).
+Phase 02 engine/replay evidence lives in [ENGINE_VALIDATION.md](ENGINE_VALIDATION.md).
+Phase 03 transport evidence lives in [SERVER_FOUNDATION_VALIDATION.md](SERVER_FOUNDATION_VALIDATION.md).
 This document defines the commands and behavior each layer must verify as it is
 implemented.
 
@@ -41,8 +43,16 @@ invariants, typed emergency records and defensive snapshot copying. The isolated
 import test launches Python with an empty environment and asserts that importing
 and constructing domain values loads no FastAPI, Pydantic, asyncio, sockets or
 other transport dependencies. Run `uv run pytest tests/domain` from `server/`.
-There is no ticking, seeded assignment, scheduling or action execution to test
-until its respective phase.
+Phase 02 adds `test_engine.py`, `test_engine_replay.py`, three recorded fixtures
+under `tests/fixtures/engine/`, and `examples/engine_round.py` for manual use.
+Run `uv run pytest tests/domain/test_engine.py tests/domain/test_engine_replay.py`.
+These cover exact end ticks, ordered/atomic actions, ownership, cooldown edges,
+unchanged RNG, snapshot isolation, terminal idempotence and the hull/timer tie.
+Replay compares every snapshot and event between independent engines, then checks
+that accepted-only traces reproduce every boundary despite rejected commands.
+Fresh-process isolation also runs the engine through victory with an empty
+environment. Seeded assignments, emergency scheduling, remaining controls and live
+orchestration still await their selected phases.
 
 Use pytest without a web server, wall-clock waits or Android. Cover configuration
 bounds, immutable snapshot behavior, role ownership, atomic rejection, exact ticks,
@@ -59,6 +69,32 @@ sleep. Test rejects negative/nonfinite deltas and refuses non-100ms steps if a
 delta API is exposed. Do not assert cross-version RNG equivalence.
 
 ## Server and protocol (03–04 onward)
+
+Phase 03 runnable checks from `server/`:
+
+```bash
+uv run pytest tests/protocol tests/api tests/application
+uv run mypy src examples
+```
+
+Strict parser/fixture tests cover Unicode byte bounds, unsafe correlation IDs,
+duplicates/nonfinite JSON, unsupported versions and future feature gates.
+TestClient verifies real ASGI ping/errors/close codes, independent health/factories,
+separate rate budgets, injected admission deadline and sentinel-free errors/logs.
+Async tests use an ASGI socket harness to block sends/handshakes and a fake clock
+to verify send timeouts, queue overflow, disconnect/shutdown and level cancellation.
+They assert no owned tasks/deadline waiters remain. Outbox tests preserve critical
+order and coalesce only unsolicited same-kind/round snapshots. Adapter tests call
+the real pure fixture, check all domain rejection mappings, public field allowlists,
+resource percentages, final results and cancellation without a domain tick.
+No test sleeps for simulated admission or gameplay time.
+
+For a live local smoke check, run `python scripts/dev.py run-server` from root,
+then `uv run python examples/websocket_smoke.py` from `server/` in a second terminal.
+It checks health, ping/pong, unavailable/unknown commands, malformed JSON/1007 and
+unsupported version/1002, then health again. It creates no rooms. The script is
+bounded to 15 seconds and accepts `--base-url http://127.0.0.1:8765` for another
+local port. Stop Uvicorn with Ctrl+C and observe clean application shutdown.
 
 Use app-factory tests with isolated registries and controllable clock/ticker.
 Test typed envelopes and all error classes, WS handshake, frame limits, version

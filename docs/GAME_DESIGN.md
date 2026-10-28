@@ -2,14 +2,30 @@
 
 All numeric values below are **initial playtest assumptions**, not proven balance.
 Change them in configuration, record the reason, and keep deterministic tests.
-The pure engine is introduced in Phase 02; cooperative controls in Phase 09 and
-emergencies in Phase 10. This document defines intended behavior, not current code.
+Phase 02 implements the engine subset described below; complete cooperative
+controls arrive in Phase 09 and emergencies in Phase 10. The full catalog remains
+the intended design and is not all executable yet.
 
 Phase 01 now defines the data and validated settings for these rules, without
 executing them. The single source of default values is
 [`GameConfig`](../server/src/one_job/domain/config.py) (`spaceship-v1`). The tables
 below explain that baseline; update them when deliberately changing its defaults.
 Construction examples and actual type names are in [GAME_STATE.md](GAME_STATE.md).
+
+The implemented Phase 02 subset is `set_engine_power`, `move_lane` and `coolant`,
+with base heat/cooling, critical-heat hull damage, movement/coolant cooldowns and
+the configured round timer. Explicit caller-supplied assignments are required.
+`start()` enters running directly for pure engine use; no party briefing/countdown
+or room runner is connected. The six remaining action records return an explicit
+unavailable result without executing effects. No emergency is spawned, including
+overheating, and no RNG draw occurs. Shield flags/energy remain at initial values
+until Phase 09 adds their dynamics; configured power reservations still constrain
+output changes. The baseline round alone is not the cooperative party game.
+
+Commands apply at completed-tick boundary n before step n+1. Heat is updated and
+clamped before critical damage; cooldowns age with each step. A command with a
+C-tick cooldown at boundary n is usable at n+C. Hull loss precedes timer victory,
+including on the final tick. Terminal state/result do not change on later calls.
 
 Configuration requires 60,000–120,000 ms in whole 100 ms ticks, positive action
 durations/cooldowns/event intervals, ordered interval endpoints, and one or two

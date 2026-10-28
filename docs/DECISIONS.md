@@ -179,6 +179,50 @@ the observed failure with the smallest change.
 Consequences: Re-run Android build/lint and the original instrumented test.
 The app's runtime behavior and server/client authority boundary are unchanged.
 
+## ADR-013 — Phase 03 transport subset and bounded connection ownership
+
+Date: 2026-10-27
+
+Status: Accepted
+
+Context: Transport must be executable before rooms exist, while the designed v1
+catalog already reserves room/gameplay commands and private views.
+
+Decision: Expose ping/pong and typed errors on `/ws`. Validate strict envelopes
+for every frame and the implemented ping payload. Recognized future commands
+require an object payload but return `feature_unavailable` before business-payload
+decoding or admission checks; their complete DTOs/permissions arrive in their
+selected phases. No socket operation creates an engine fixture or membership.
+Keep the engine adapter testable through explicit supplied engine/actor inputs.
+
+Each connection owns its reader, writer and admission deadline under one
+supervisor. A 32-item outbox coalesces only unsolicited snapshots of the same
+kind/round, moving the replacement to the tail to preserve reply order. Full
+queues close with 1013 instead of silently dropping a reply. Bound send/close
+I/O and cancel/await owned tasks on every exit. Inject monotonic deadline/tick
+sources; do not launch a live game runner.
+
+ASGI cancellation can interrupt cleanup repeatedly (observed as an intermittent
+TestClient exit cancellation). Shield the bounded cancel/await/close cleanup
+with AnyIO's cancellation scope. Declare AnyIO as a direct runtime dependency;
+retain its already locked version and the rest of the dependency baseline.
+
+The 10-second admission deadline never resets on ping or unavailable commands.
+Use the designed command rate (20/s, burst 40), a separate ping budget (1/s,
+burst 3), and close with 1008 after five rate violations within ten seconds.
+Other rejected well-framed requests keep the connection open. Logging includes
+only generation, validated request ID, allowlisted operation/error code and
+duration, without payloads, tokens, views or exception text.
+
+Alternatives considered: Implement future room DTOs/behavior early; expose a
+debug gameplay socket; use unbounded writes; log raw validation errors. These
+would expand scope, blur authority or expose private input.
+
+Consequences: Phase 03 can verify real transport and cleanup without claiming
+admission or gameplay. NETWORK_PROTOCOL.md and fixtures distinguish this subset
+from planned v1 behavior. Android networking/codec fixtures remain Phase 06;
+there is no current Android socket implementation to change.
+
 ## Decisions still deferred
 
 External backend hosting and an open-source license are not selected. Phase 16 must start with an evidence-based local-networking decision. Phase 17 must specify its submarine mechanics after spaceship playtests. Phase 18 reevaluates current store requirements and crash-reporting needs without publishing anything.

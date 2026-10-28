@@ -5,6 +5,9 @@ commit `37c29b2` with a clean working tree. Phase 00's source, lockfile, toolcha
 pins and Android placeholder were preserved. The completion ledger is
 [plans/plans.md](../plans/plans.md).
 
+This records the Phase 01 checks. Subsequent engine evidence is in
+[ENGINE_VALIDATION.md](ENGINE_VALIDATION.md).
+
 ## Toolchains and prerequisites
 
 Phase 00 is checked off with prior evidence in FOUNDATION_VALIDATION.md. These

@@ -1,9 +1,54 @@
-# WebSocket protocol v1 (designed; implementation starts Phase 03)
+# WebSocket protocol v1
 
-Phase 00 exposes only `GET /health`. The future socket is `/ws`, JSON text frames
-only, one message per frame, maximum UTF-8 size 16 KiB. The Python boundary will
-use Pydantic discriminated unions; Android will mirror it with sealed serializable
-types in Phase 06. No arbitrary dictionaries should define gameplay payloads.
+## Implemented Phase 03 subset
+
+The server exposes independent `GET /health` and `/ws`. WebSockets use JSON text
+frames only, one message per frame, maximum UTF-8 size 16 KiB (16,384 bytes).
+The Python boundary uses strict Pydantic discriminated unions; Android will mirror
+it with sealed serializable types in Phase 06. No arbitrary dictionaries should
+define gameplay payloads.
+
+Only `ping` is dispatched: strict `nonce` payload (1–64 Unicode scalar characters,
+no unknown keys), correlated `pong`, null `room_revision`. All recognized reserved
+commands in the table below return correlated `feature_unavailable`, including
+admission commands and `join_display`. Their envelope and object payload are
+validated, but their future payload fields/permissions are not decoded yet.
+Unknown envelope fields are always rejected. There is no membership, credential,
+lobby, engine invocation, private view or public-state broadcast through `/ws`.
+The internal adapter/public-state DTO is exercised only by fixture tests.
+The remaining catalog describes reserved later behavior, not current handlers.
+
+Validation order: UTF-8 byte size, JSON, strict required envelope, integer version,
+recognized type, then implemented payload. Unknown fields/types, missing fields,
+invalid values and bool/string/float versions produce `invalid_message` (or
+`unknown_type` for an otherwise valid envelope) without closing. Only a valid
+1–64 ASCII request ID is echoed; malformed JSON/oversize errors have null
+`reply_to`. Duplicate JSON keys, nonfinite numbers, trailing JSON and binary
+frames are invalid framing: safe error where possible then 1007. Oversize closes
+1009. A well-formed unsupported integer version receives `unsupported_version`
+then 1002. Safe error messages never echo input, validation details or exceptions.
+Fatal framing/version errors take precedence over exhausted rate budgets.
+
+Every unadmitted connection expires ten seconds after opening, even after pings
+or unavailable commands: unsolicited `not_authenticated` then 1008. Configure the
+clock/deadline via `create_app` for tests. Phase 04 must cancel/replace this deadline
+on real admission. The separate ping budget is 1/s, burst 3; commands use 20/s,
+burst 40. A fifth rate violation within ten seconds closes 1008 after `rate_limited`.
+
+The bounded outbox holds 32 queued items plus at most one in-flight send. Only
+unsolicited snapshots of the same kind/round coalesce, at the queue tail; older
+revisions are ignored. Correlated responses and critical events never coalesce.
+Queue overflow or a five-second blocked send closes 1013, requiring future clients
+to recover missing replies/state. Shutdown closes 1001; final close I/O is bounded
+to one second. Owned tasks are cancelled/awaited, including on ASGI cancellation.
+
+The dev launcher also sets Uvicorn's WebSocket limit to 16,384 bytes. Uvicorn may
+reject oversize frames before the app can send an error; close 1009 is authoritative.
+`server/logging.json` enables allowlisted application log fields (generation,
+validated request ID, known operation/error code, close code and duration), never
+payloads, tokens, views or exception text. Uvicorn protocol debug logging is not
+enabled. Shared [Phase 03 fixtures](protocol-fixtures/phase03.json) are executable
+in Python now and must be mirrored by the Phase 06 Android codec tests.
 
 ## Envelope
 

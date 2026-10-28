@@ -1,0 +1,10 @@
+[
+  {
+    "request": {"version": 1, "type": "ping", "request_id": "p-1", "payload": {"nonce": "hello"}},
+    "response": {"version": 1, "type": "pong", "reply_to": "p-1", "room_revision": null, "payload": {"nonce": "hello"}}
+  },
+  {
+    "request": {"version": 1, "type": "create_room", "request_id": "c-1", "payload": {"name": "Crew"}},
+    "response": {"version": 1, "type": "error", "reply_to": "c-1", "room_revision": null, "payload": {"code": "feature_unavailable", "message": "This feature is not implemented yet.", "retryable": false}}
+  }
+]
