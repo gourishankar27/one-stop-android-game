@@ -8,31 +8,44 @@ from pydantic import Field, JsonValue, RootModel, StrictInt, StrictStr, TypeAdap
 
 from one_job.protocol.messages import (
     DTO,
+    AckOperation,
+    AckPayload,
+    CreateRoomPayload,
+    EmptyPayload,
     ErrorCode,
     ErrorPayload,
+    JoinRoomPayload,
+    LobbyStatePayload,
     NonnegativeInt,
     PingPayload,
+    PlayerReadyPayload,
     PublicStatePayload,
     RequestId,
+    ResumeSessionPayload,
+    SessionAcceptedPayload,
     error_payload,
 )
 
 MAX_FRAME_BYTES = 16 * 1024
 ReservedType = Literal[
-    "create_room",
-    "join_room",
-    "resume_session",
-    "leave_room",
-    "player_ready",
-    "start_game",
     "briefing_ready",
     "player_action",
-    "request_state",
     "play_again",
     "return_to_lobby",
     "join_display",
 ]
 RESERVED_TYPES = frozenset(get_args(ReservedType))
+LOBBY_TYPES = frozenset(
+    {
+        "create_room",
+        "join_room",
+        "resume_session",
+        "leave_room",
+        "player_ready",
+        "start_game",
+        "request_state",
+    }
+)
 
 
 class ClientHeader(DTO):
@@ -56,7 +69,67 @@ class ReservedEnvelope(DTO):
     payload: dict[str, JsonValue]
 
 
-type ClientMessage = Annotated[PingEnvelope | ReservedEnvelope, Field(discriminator="type")]
+class CreateRoomEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["create_room"]
+    request_id: RequestId
+    payload: CreateRoomPayload
+
+
+class JoinRoomEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["join_room"]
+    request_id: RequestId
+    payload: JoinRoomPayload
+
+
+class ResumeSessionEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["resume_session"]
+    request_id: RequestId
+    payload: ResumeSessionPayload
+
+
+class LeaveRoomEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["leave_room"]
+    request_id: RequestId
+    payload: EmptyPayload
+
+
+class PlayerReadyEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["player_ready"]
+    request_id: RequestId
+    payload: PlayerReadyPayload
+
+
+class StartGameEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["start_game"]
+    request_id: RequestId
+    payload: EmptyPayload
+
+
+class RequestStateEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["request_state"]
+    request_id: RequestId
+    payload: EmptyPayload
+
+
+type LobbyMessage = (
+    CreateRoomEnvelope
+    | JoinRoomEnvelope
+    | ResumeSessionEnvelope
+    | LeaveRoomEnvelope
+    | PlayerReadyEnvelope
+    | StartGameEnvelope
+    | RequestStateEnvelope
+)
+type ClientMessage = Annotated[
+    PingEnvelope | ReservedEnvelope | LobbyMessage, Field(discriminator="type")
+]
 
 
 class ClientFrame(RootModel[ClientMessage]):
@@ -82,6 +155,30 @@ class ErrorEnvelope(DTO):
     payload: ErrorPayload
 
 
+class SessionAcceptedEnvelope(DTO):
+    version: Literal[1] = 1
+    type: Literal["session_accepted"] = "session_accepted"
+    reply_to: RequestId
+    room_revision: NonnegativeInt
+    payload: SessionAcceptedPayload
+
+
+class AckEnvelope(DTO):
+    version: Literal[1] = 1
+    type: Literal["ack"] = "ack"
+    reply_to: RequestId
+    room_revision: NonnegativeInt
+    payload: AckPayload
+
+
+class LobbyStateEnvelope(DTO):
+    version: Literal[1] = 1
+    type: Literal["lobby_state"] = "lobby_state"
+    reply_to: RequestId | None
+    room_revision: NonnegativeInt
+    payload: LobbyStatePayload
+
+
 class PublicStateEnvelope(DTO):
     """Reserved DTO used by adapter/outbox tests, never emitted by Phase 03 /ws."""
 
@@ -93,7 +190,13 @@ class PublicStateEnvelope(DTO):
 
 
 ServerMessage = Annotated[
-    PongEnvelope | ErrorEnvelope | PublicStateEnvelope, Field(discriminator="type")
+    PongEnvelope
+    | ErrorEnvelope
+    | PublicStateEnvelope
+    | SessionAcceptedEnvelope
+    | AckEnvelope
+    | LobbyStateEnvelope,
+    Field(discriminator="type"),
 ]
 
 
@@ -141,7 +244,7 @@ def _safe_request_id(raw: object) -> str | None:
         return None
 
 
-def parse_text(text: str) -> PingEnvelope | ReservedEnvelope:
+def parse_text(text: str) -> ClientMessage:
     try:
         size = len(text.encode("utf-8"))
     except UnicodeEncodeError:
@@ -162,7 +265,11 @@ def parse_text(text: str) -> PingEnvelope | ReservedEnvelope:
         header = ClientHeader.model_validate(raw)
     except ValidationError:
         raise FrameError(ErrorCode.INVALID_MESSAGE, request_id) from None
-    operation = header.type if header.type == "ping" or header.type in RESERVED_TYPES else None
+    operation = (
+        header.type
+        if header.type == "ping" or header.type in RESERVED_TYPES or header.type in LOBBY_TYPES
+        else None
+    )
     if header.version != 1:
         raise FrameError(ErrorCode.UNSUPPORTED_VERSION, request_id, 1002, operation)
     if operation is None:
@@ -187,3 +294,21 @@ def error_message(
 
 def encode_message(message: ServerMessage) -> str:
     return message.model_dump_json()
+
+
+def session_accepted(
+    reply_to: str, room_revision: int, payload: SessionAcceptedPayload
+) -> SessionAcceptedEnvelope:
+    return SessionAcceptedEnvelope(reply_to=reply_to, room_revision=room_revision, payload=payload)
+
+
+def ack(reply_to: str, room_revision: int, operation: AckOperation) -> AckEnvelope:
+    return AckEnvelope(
+        reply_to=reply_to, room_revision=room_revision, payload=AckPayload(operation=operation)
+    )
+
+
+def lobby_state(
+    payload: LobbyStatePayload, room_revision: int, reply_to: str | None = None
+) -> LobbyStateEnvelope:
+    return LobbyStateEnvelope(reply_to=reply_to, room_revision=room_revision, payload=payload)

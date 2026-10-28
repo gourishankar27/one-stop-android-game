@@ -2,7 +2,8 @@
 
 Phase 01 implements immutable, validated Python domain values in
 `server/src/one_job/domain/`. Phase 02 adds the synchronous baseline engine
-described below. Room services and wire projections remain later work. Wire field
+described below. Phase 04 implements application room membership/lobby projections;
+gameplay station projections remain later work. Wire field
 names live in
 NETWORK_PROTOCOL.md; internal snapshots are not serialization contracts.
 
@@ -43,6 +44,36 @@ Room codes are uppercase and case-normalized on input. Generate with secure
 randomness and retry collisions atomically; cap retries at 10 and return capacity
 error. IDs and room codes are not game RNG outputs. A new rematch gets a new
 round ID and seed; room code, player IDs and host stay stable.
+
+## Phase 04 lobby lifecycle
+
+Application membership is separate from immutable domain `Player` values.
+`RoomRegistry` discovers rooms and credentials; each `RoomService` task owns its
+roster, host ID, ready flags, revision and deadlines. Six-symbol room codes are
+securely generated with ten collision attempts; UUIDs identify memberships.
+Duplicate names never share identity. Configurable defaults are 100 rooms and
+three controller seats; two players can satisfy start eligibility.
+
+Create/join/resume send targeted session credentials then full allowlisted lobby
+state. Membership/connectivity mutations reset all readiness and increment the
+revision once. Readiness no-ops/replayed requests do not increment it. The host is
+the creator, holds its seat through disconnect grace, and transfers to the earliest
+joined connected member on leave/expiry. If none is connected, host ID is null
+until an eligible resume. Exact-deadline expiry precedes resume/other commands.
+Disconnected seats reserve capacity for 30 seconds; empty rooms are removed.
+Lobbies expire after 30 minutes without fresh accepted room activity; heartbeats,
+errors and cached replies do not refresh that idle deadline.
+
+The stable opaque credential is reconstructed only for targeted transmission;
+registry membership and replay records contain no plaintext token. Resume replaces
+the old connection generation before accepting subsequent commands. Old commands
+and disconnect callbacks cannot mutate the replacement. Per-member terminal replay
+is bounded to 128 entries/30 seconds. Explicit leave, expiry and restart invalidate
+credentials. See NETWORK_PROTOCOL.md and ADR-014 for wire/replay details.
+
+`start_eligibility` requires lobby stage and exactly two or three connected ready
+members. `start_game` also requires the host but still returns
+`feature_unavailable` after valid checks. No game/role/observer session is created.
 
 ## Implemented Python API
 

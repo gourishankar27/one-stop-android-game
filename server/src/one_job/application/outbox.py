@@ -4,7 +4,7 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass
 
-from one_job.protocol.envelopes import PublicStateEnvelope, ServerMessage
+from one_job.protocol.envelopes import LobbyStateEnvelope, PublicStateEnvelope, ServerMessage
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,13 +29,17 @@ class Outbox:
     def offer(self, message: ServerMessage, delivered: asyncio.Event | None = None) -> bool:
         if self._closed:
             return False
-        if isinstance(message, PublicStateEnvelope) and message.reply_to is None:
+        if (
+            isinstance(message, (PublicStateEnvelope, LobbyStateEnvelope))
+            and message.reply_to is None
+        ):
             for item in tuple(self._items):
                 old = item.message
                 if (
-                    isinstance(old, PublicStateEnvelope)
+                    isinstance(old, (PublicStateEnvelope, LobbyStateEnvelope))
+                    and type(old) is type(message)
                     and old.reply_to is None
-                    and old.payload.public.round_id == message.payload.public.round_id
+                    and self._snapshot_key(old) == self._snapshot_key(message)
                 ):
                     if message.room_revision < old.room_revision:
                         return True
@@ -46,6 +50,12 @@ class Outbox:
         self._items.append(Outgoing(message, delivered))
         self._ready.set()
         return True
+
+    @staticmethod
+    def _snapshot_key(message: PublicStateEnvelope | LobbyStateEnvelope) -> str:
+        if isinstance(message, PublicStateEnvelope):
+            return message.payload.public.round_id
+        return message.payload.room_code
 
     async def get(self) -> Outgoing:
         while not self._items:

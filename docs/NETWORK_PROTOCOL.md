@@ -1,6 +1,6 @@
 # WebSocket protocol v1
 
-## Implemented Phase 03 subset
+## Implemented Phase 04 subset
 
 The server exposes independent `GET /health` and `/ws`. WebSockets use JSON text
 frames only, one message per frame, maximum UTF-8 size 16 KiB (16,384 bytes).
@@ -8,15 +8,31 @@ The Python boundary uses strict Pydantic discriminated unions; Android will mirr
 it with sealed serializable types in Phase 06. No arbitrary dictionaries should
 define gameplay payloads.
 
-Only `ping` is dispatched: strict `nonce` payload (1–64 Unicode scalar characters,
-no unknown keys), correlated `pong`, null `room_revision`. All recognized reserved
-commands in the table below return correlated `feature_unavailable`, including
-admission commands and `join_display`. Their envelope and object payload are
-validated, but their future payload fields/permissions are not decoded yet.
-Unknown envelope fields are always rejected. There is no membership, credential,
-lobby, engine invocation, private view or public-state broadcast through `/ws`.
-The internal adapter/public-state DTO is exercised only by fixture tests.
-The remaining catalog describes reserved later behavior, not current handlers.
+Implemented commands: `ping`, `create_room`, `join_room`, `resume_session`,
+`leave_room`, `player_ready`, `request_state`, and eligibility checks for
+`start_game`. Their payload DTOs reject unknown fields/coercion. Names are trimmed
+1–20 Unicode scalar characters without control characters; duplicate names are
+allowed. Codes trim outer whitespace and uppercase six ASCII symbols from
+`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. Unknown/started/full rooms produce safe errors;
+disconnected seats still count against capacity. Admission emits targeted
+`session_accepted`, then an unsolicited full `lobby_state` to connected members.
+The snapshot contains only code/stage/host ID/roster connectivity/readiness and
+common `can_start` eligibility. Tokens never appear in broadcasts.
+
+`start_game` checks membership, host, lobby stage and exactly 2 or 3 connected
+ready players, in that order. An eligible request returns `feature_unavailable`
+without changing the stage/revision. `can_start` reports eligibility, not a
+playable launch. `player_ready` returns `ack` before any changed lobby snapshot;
+an unchanged ready value returns only the ack. `request_state` returns a correlated
+full snapshot. Leave returns `ack`, invalidates the membership and closes 1000.
+All membership/connectivity changes clear readiness and advance revision once;
+no-op commands and cached replays do not advance it.
+
+`briefing_ready`, `player_action`, `play_again`, `return_to_lobby` and `join_display`
+remain recognized reserved commands, returning `feature_unavailable` before their
+future business payload decoding. No engine call, game loop, role/private view,
+observer membership or public-state broadcast is exposed. The remaining catalog
+describes the later gameplay contract. Android codec implementation remains 06.
 
 Validation order: UTF-8 byte size, JSON, strict required envelope, integer version,
 recognized type, then implemented payload. Unknown fields/types, missing fields,
@@ -31,12 +47,14 @@ Fatal framing/version errors take precedence over exhausted rate budgets.
 
 Every unadmitted connection expires ten seconds after opening, even after pings
 or unavailable commands: unsolicited `not_authenticated` then 1008. Configure the
-clock/deadline via `create_app` for tests. Phase 04 must cancel/replace this deadline
-on real admission. The separate ping budget is 1/s, burst 3; commands use 20/s,
+clock/deadline via `create_app` for tests; successful admission cancels that deadline.
+After 30 seconds without inbound activity the connection closes 1001; membership
+grace then lasts a separate 30 seconds. The separate ping budget is 1/s, burst 3; commands use 20/s,
 burst 40. A fifth rate violation within ten seconds closes 1008 after `rate_limited`.
 
 The bounded outbox holds 32 queued items plus at most one in-flight send. Only
-unsolicited snapshots of the same kind/round coalesce, at the queue tail; older
+unsolicited snapshots of the same kind/room (lobby) or kind/round (public state)
+coalesce, at the queue tail; older
 revisions are ignored. Correlated responses and critical events never coalesce.
 Queue overflow or a five-second blocked send closes 1013, requiring future clients
 to recover missing replies/state. Shutdown closes 1001; final close I/O is bounded
@@ -47,8 +65,31 @@ reject oversize frames before the app can send an error; close 1009 is authorita
 `server/logging.json` enables allowlisted application log fields (generation,
 validated request ID, known operation/error code, close code and duration), never
 payloads, tokens, views or exception text. Uvicorn protocol debug logging is not
-enabled. Shared [Phase 03 fixtures](protocol-fixtures/phase03.json) are executable
-in Python now and must be mirrored by the Phase 06 Android codec tests.
+enabled. Shared [Phase 04 fixtures](protocol-fixtures/phase04.json) validate the
+current Python DTOs and must be mirrored by Phase 06 Android codec tests.
+[Phase 03 fixtures](protocol-fixtures/phase03.json) preserve the earlier subset.
+
+Resume authenticates by digest before binding a connection. It retains identity
+and token, replaces/fences the old generation and closes an old active socket
+1008. Old queued commands and disconnect callbacks cannot alter its replacement.
+Invalid/expired credentials receive `session_expired` then 1008. Grace expires at
+the exact deadline, checked before processing commands even if a timer has not
+yet run. The host seat is held during grace. On removal, the earliest joined
+connected member becomes host; if none is connected the host ID is temporarily
+null until an eligible member resumes. Empty rooms disappear; idle lobbies expire
+after 30 minutes. Only accepted fresh lobby commands/admission refresh idle time;
+pings, errors and cached replays do not. Settings are injectable through
+`RoomSettings`; this is process memory, not persistence.
+
+Replay is per membership: retain at most 128 terminal replies for 30 seconds.
+Signatures use normalized typed commands, never stored raw token payloads. An
+identical request ID/signature returns its original reply/revision without
+mutation/broadcast; different content returns `request_id_conflict`. Admission
+replays return the same targeted session receipt. After resume, use a fresh
+`request_state` ID for current state. The cache contains credential-free admission
+metadata; a private lifespan key reconstructs the stable token only when sending
+targeted admission replies. Membership/indexes store only token digests. See
+[ADR-014](DECISIONS.md#adr-014--lobby-ownership-credential-replay-and-expiry-boundaries).
 
 ## Envelope
 
@@ -67,7 +108,8 @@ Server → client:
 `version` is integer 1. Client `request_id` is a unique 1–64 character ASCII
 identifier (`A–Z a–z 0–9 _ -`); payload is always an object. Server `reply_to`
 is a request ID or null for unsolicited snapshots/events. `room_revision` is an
-integer >=0 once in a room, otherwise null. Envelope keys are required.
+integer >=0 for room commands/snapshots, otherwise null. Connection/framing errors
+can have null revision even on an admitted connection. Envelope keys are required.
 Do not send `player_id`, `host=true`, seed, damage or resource updates as client
 authority. The authenticated connection supplies player identity.
 
@@ -161,6 +203,7 @@ commands are supplied by the application, not copied from untrusted fields.
 
 In `lobby_state`, `stage` is lobby/briefing/countdown/running/paused/finished/aborted;
 `can_start` is common start eligibility, not a substitute for checking host ID.
+`host_player_id` is UUID|null, temporarily null if no connected successor exists.
 Shared membership is sent even during a round to show connection state.
 
 `PublicRoundView` fields: `round_id`, `stage`, `tick_index`, `remaining_ms`,

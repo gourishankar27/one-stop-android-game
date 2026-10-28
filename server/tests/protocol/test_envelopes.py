@@ -146,13 +146,13 @@ def test_deep_invalid_root_is_bounded_and_redacted():
 
 
 def test_utf8_byte_limit_exact_boundary():
-    value = frame("create_room", payload={"padding": ""})
+    value = frame("join_display", payload={"padding": ""})
     baseline = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
     value["payload"]["padding"] = "é" * ((MAX_FRAME_BYTES - len(baseline)) // 2)
     text = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
     text += " " * (MAX_FRAME_BYTES - len(text.encode("utf-8")))
     assert len(text.encode("utf-8")) == MAX_FRAME_BYTES
-    assert parse_text(text).type == "create_room"
+    assert parse_text(text).type == "join_display"
     with pytest.raises(FrameError) as caught:
         parse_text(text + " ")
     assert caught.value.close_code == 1009

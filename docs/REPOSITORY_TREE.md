@@ -51,8 +51,10 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
     - `DOMAIN_MODEL_VALIDATION.md`
     - `ENGINE_VALIDATION.md`
     - `SERVER_FOUNDATION_VALIDATION.md`
+    - `LOBBY_VALIDATION.md`
     - `protocol-fixtures/`
       - `phase03.json`
+      - `phase04.json`
     - `GAME_DESIGN.md`
     - `GAME_STATE.md`
     - `NETWORK_PROTOCOL.md`
@@ -94,6 +96,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
     - `examples/`
       - `engine_round.py`
       - `websocket_smoke.py`
+      - `lobby_smoke.py`
     - `src/`
       - `one_job/`
         - `__init__.py`
@@ -107,6 +110,9 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
           - `engine_adapter.py`
           - `limits.py`
           - `outbox.py`
+          - `rooms.py`
+          - `room_service.py`
+          - `sessions.py`
           - `timing.py`
         - `protocol/`
           - `__init__.py`
@@ -130,13 +136,16 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
       - `support.py`
       - `test_health.py`
       - `api/`
+        - `test_lobby.py`
         - `test_websocket.py`
       - `application/`
         - `test_connections.py`
         - `test_engine_adapter.py`
         - `test_outbox.py`
+        - `test_rooms.py`
       - `protocol/`
         - `test_envelopes.py`
+        - `test_lobby_messages.py`
       - `domain/`
         - `conftest.py`
         - `test_actions.py`

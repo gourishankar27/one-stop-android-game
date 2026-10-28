@@ -6,8 +6,8 @@ evidence for every required gate, including manual gates where specified.
 
 ## Current state — 2026-10-28
 
-- Current phase: **03 — Server Foundation, complete**.
-- Completed phases: **00, 01, 02, 03**. Next eligible phase: **04**, awaiting explicit instruction.
+- Current phase: **04 — Room and Lobby System, complete**.
+- Completed phases: **00, 01, 02, 03, 04**. Next eligible phase: **05**, awaiting explicit instruction.
 - Delivered foundation: Python health service/package/tests, Compose placeholder,
   wrapper/tooling, architecture/game/protocol documents and all phase briefs.
 - Phase 00 evidence: repository checker; Python 3.12 locked setup, 2 tests,
@@ -47,6 +47,19 @@ evidence for every required gate, including manual gates where specified.
   Android toolchain presence was verified; Android builds/device checks were not
   rerun in this backend-only phase. No rooms, credentials, live game tasks or
   Android networking were added. Prior uncommitted Phase 02 work was preserved.
+- Delivered Phase 04: authoritative room owners, secure codes/UUID memberships,
+  private stable credentials, create/join/ready/leave/state, generation-fenced
+  resume, bounded terminal replay, disconnect grace, host transfer and idle expiry.
+  Start checks eligibility but remains explicitly unavailable; no game is launched.
+- Phase 04 evidence: 851 backend tests passed; locked setup, Ruff lint/format,
+  strict mypy, repository/helper checks and wheel/sdist passed. Final extracted
+  wheel admission/lobby/leave/cleanup passed. Three live Python sockets agreed on
+  roster/revisions through joins, readiness, unavailable start, leave, resume and
+  host transfer; credential-free logs and clean server shutdown were observed.
+- Remaining Phase 04 gates: none. Exact commands, policy decisions and scoped
+  limitations: [LOBBY_VALIDATION.md](../docs/LOBBY_VALIDATION.md). Dependency pins,
+  pure engine and Android sources were preserved. Android builds/device checks
+  were not rerun for this backend-only phase. No later phase was started.
 
 ## Product goal and MVP
 
@@ -82,7 +95,7 @@ another ready phase explicitly; never execute more than the selected phase.
 | [x] | [01 — Game Domain Model](phase-01-game-domain-model.md) | 00 | Pure validated types |
 | [x] | [02 — Core Game Engine](phase-02-game-engine.md) | 01 | Deterministic baseline simulation |
 | [x] | [03 — Server Foundation](phase-03-server-foundation.md) | 02 | Typed WS/lifespan adapter |
-| [ ] | [04 — Room and Lobby System](phase-04-room-and-lobby.md) | 03 | Membership/host/ready/credential services |
+| [x] | [04 — Room and Lobby System](phase-04-room-and-lobby.md) | 03 | Membership/host/ready/credential services |
 | [ ] | [05 — Android Foundation](phase-05-android-foundation.md) | 00; default after 04 | Navigation/state boundaries |
 | [ ] | [06 — Android Networking](phase-06-android-networking.md) | 03, 04, 05 | Repository and typed socket |
 | [ ] | [07 — Lobby UI](phase-07-lobby-ui.md) | 04, 06 | Real multi-phone lobby |
@@ -125,10 +138,10 @@ update docs and decisions; mark complete only with evidence; report a concise
 handoff; stop. If blocked, leave the checkbox open and record exactly which gate
 remains. Do not turn an unavailable emulator or unavailable humans into a pass.
 
-After Phase 02 is complete, the next explicit command is:
+After Phase 04 is complete, the next explicit command is:
 
 ```text
-Implement plans/phase-03-server-foundation.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
+Implement plans/phase-05-android-foundation.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
 ```
 
 ## Deferred work
@@ -194,3 +207,15 @@ tick-549 heat defeat without wall-clock waits. Engine API, tick order and exact
 evidence are in GAME_STATE.md, ARCHITECTURE.md and ENGINE_VALIDATION.md. Remaining
 controls, emergencies, room/transport integration and Android gameplay remain
 future work. Phase 03 was not started.
+
+2026-10-28 (room/lobby): Phase 04 completed after all required checks and live
+manual gates passed. Per-room owners serialize membership and updates; secure
+admission/resume credentials remain private, generation checks fence obsolete
+sockets, and bounded replay preserves terminal replies without plaintext token
+storage. Ready/reset/host/expiry policies and unavailable start match the current
+v1 contract (ADR-014). 851 tests, Ruff, strict mypy, repository/helper checks and
+package builds passed; the extracted wheel passed admission/leave/cleanup. A live
+three-client check agreed on roster/revisions through join/ready/leave/resume/host
+transfer; the server shut down cleanly. Exact evidence is in LOBBY_VALIDATION.md.
+The existing TestClient warning remains. Android/gameplay were not implemented
+or revalidated in this phase. Phase 05 is recommended and was not started.

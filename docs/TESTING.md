@@ -4,6 +4,7 @@ Foundation evidence lives in FOUNDATION_VALIDATION.md; Phase 01 model and
 regression evidence lives in [DOMAIN_MODEL_VALIDATION.md](DOMAIN_MODEL_VALIDATION.md).
 Phase 02 engine/replay evidence lives in [ENGINE_VALIDATION.md](ENGINE_VALIDATION.md).
 Phase 03 transport evidence lives in [SERVER_FOUNDATION_VALIDATION.md](SERVER_FOUNDATION_VALIDATION.md).
+Phase 04 room/lobby evidence lives in [LOBBY_VALIDATION.md](LOBBY_VALIDATION.md).
 This document defines the commands and behavior each layer must verify as it is
 implemented.
 
@@ -70,7 +71,7 @@ delta API is exposed. Do not assert cross-version RNG equivalence.
 
 ## Server and protocol (03–04 onward)
 
-Phase 03 runnable checks from `server/`:
+Phase 03–04 runnable checks from `server/`:
 
 ```bash
 uv run pytest tests/protocol tests/api tests/application
@@ -89,12 +90,30 @@ the real pure fixture, check all domain rejection mappings, public field allowli
 resource percentages, final results and cancellation without a domain tick.
 No test sleeps for simulated admission or gameplay time.
 
+Phase 04 adds `tests/application/test_rooms.py`, `tests/api/test_lobby.py` and
+`tests/protocol/test_lobby_messages.py`. These check collision exhaustion,
+simultaneous joins/capacity, strict normalization, two/three-player eligibility,
+ready resets, one revision per mutation, explicit leave, grace/idle expiry,
+stable resume/fencing, cache conflict/bounds/TTL, credential-free replay storage,
+nullable host succession and shutdown/admission races. Three-client ASGI tests
+compare shared roster/revisions and absence of credential sentinels. Fake time
+is advanced explicitly; `await app.state.rooms.synchronize()` provides an owner
+barrier after clock advancement. `RoomSettings` and `ConnectionSettings` can
+shorten deadlines independently. Fixtures in `docs/protocol-fixtures/phase04.json`
+validate current DTOs and use an explicit synthetic token marker.
+
 For a live local smoke check, run `python scripts/dev.py run-server` from root,
 then `uv run python examples/websocket_smoke.py` from `server/` in a second terminal.
 It checks health, ping/pong, unavailable/unknown commands, malformed JSON/1007 and
 unsupported version/1002, then health again. It creates no rooms. The script is
 bounded to 15 seconds and accepts `--base-url http://127.0.0.1:8765` for another
 local port. Stop Uvicorn with Ctrl+C and observe clean application shutdown.
+
+With the same server, `uv run python examples/lobby_smoke.py` exercises three
+real WebSocket clients: create/join twice, ready, gated start, leave,
+disconnect/resume, matching lobby revisions and host transfer/final leave.
+Use `--url ws://127.0.0.1:8765/ws` for another local port. It prints no credentials
+and is bounded to 20 seconds. No Android client, role reveal or gameplay is claimed.
 
 Use app-factory tests with isolated registries and controllable clock/ticker.
 Test typed envelopes and all error classes, WS handshake, frame limits, version

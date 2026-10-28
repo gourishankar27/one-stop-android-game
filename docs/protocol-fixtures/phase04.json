@@ -1,0 +1,18 @@
+[
+  {
+    "request": {"version": 1, "type": "create_room", "request_id": "create-1", "payload": {"name": "Captain"}},
+    "response": {"version": 1, "type": "session_accepted", "reply_to": "create-1", "room_revision": 1, "payload": {"room_code": "ABCD23", "kind": "player", "player_id": "00000000-0000-0000-0000-000000000001", "resume_token": "<synthetic-token>"}}
+  },
+  {
+    "request": {"version": 1, "type": "player_ready", "request_id": "ready-1", "payload": {"ready": true}},
+    "response": {"version": 1, "type": "ack", "reply_to": "ready-1", "room_revision": 3, "payload": {"operation": "player_ready"}}
+  },
+  {
+    "request": {"version": 1, "type": "request_state", "request_id": "state-1", "payload": {}},
+    "response": {"version": 1, "type": "lobby_state", "reply_to": "state-1", "room_revision": 3, "payload": {"room_code": "ABCD23", "stage": "lobby", "host_player_id": "00000000-0000-0000-0000-000000000001", "players": [{"player_id": "00000000-0000-0000-0000-000000000001", "name": "Captain", "connected": true, "ready": true}, {"player_id": "00000000-0000-0000-0000-000000000002", "name": "Crew", "connected": true, "ready": false}], "can_start": false}}
+  },
+  {
+    "request": {"version": 1, "type": "start_game", "request_id": "start-1", "payload": {}},
+    "response": {"version": 1, "type": "error", "reply_to": "start-1", "room_revision": 3, "payload": {"code": "not_ready", "message": "Two or three connected, ready players are required.", "retryable": false}}
+  }
+]

@@ -11,8 +11,8 @@ be used without installed web dependencies, environment configuration or Android
 Phase 02 adds `domain/engine.py` and `rules.py`: a synchronous, single-owner
 baseline with power/lane/coolant intents, fixed-step heat/hull/cooldown updates,
 immutable snapshots, ordered accepted-command records and one terminal event.
-It consumes no clocks, environment configuration or network libraries. Room
-services and the complete simulation remain later work.
+It consumes no clocks, environment configuration or network libraries. Complete
+simulation and live room-to-engine orchestration remain later work.
 
 The engine receives config, integer seed, roster, assignments and round ID.
 `start()` returns the running tick-zero snapshot; `apply_action()` returns a typed
@@ -28,8 +28,25 @@ only delegates to a lifespan-owned `ConnectionManager`; each `create_app` lifesp
 constructs its own manager, injected monotonic clock and connection settings.
 Each connection supervises reader, writer, admission deadline and close signal.
 Disconnect/shutdown cancels and awaits owned tasks; bounded cleanup is shielded
-against ASGI level cancellation. No registry, credentials or game task is created.
+against ASGI level cancellation. Phase 03 introduced no room/game task.
 `server/logging.json` configures allowlisted connection logs in the dev launcher.
+
+Phase 04 adds a lifespan-owned `RoomRegistry` and one `RoomService` mailbox/owner
+per room. An admission lock serializes secure code allocation and cross-room
+credential lookup. Owners mutate membership/readiness and synchronously update
+registry indexes on the same event loop; they never await sockets or the admission
+lock. Reads/expiry pass through the owner too. Every command checks expiry before
+mutation; a clock deadline wakes the owner without simulated-time sleeps. Shutdown
+fences admissions, drains owners and clears rooms, digests and generation indexes.
+
+`sessions.py` holds private bindings, token digests and bounded replay records.
+An ephemeral lifespan HMAC key reconstructs opaque credentials from secure UUIDs;
+cached admission receipts retain identifiers/revision, not plaintext tokens.
+Normalized command hashes and terminal replies are bounded to 128/30 seconds.
+Generation checks precede replay/mutation, including stale disconnect callbacks.
+Targeted admission/ack replies are queued before changed snapshots. Lobby snapshots
+coalesce only with the same room/type, preserving correlated/critical replies.
+Start eligibility is reusable but no room calls the game engine in this phase.
 
 `application/engine_adapter.py` accepts an explicit engine fixture and `TickSource`.
 It maps three existing typed action DTOs into domain values, typed domain rejection
@@ -141,6 +158,11 @@ with exactly 2 or 3 controllers, before start. Host checks occur on the server.
 Use 30 seconds of disconnect grace. Hold the host seat during grace; on expiry
 in the lobby, transfer to the earliest joined connected player, breaking ties
 by player ID. Delete an empty room after grace. Idle lobby expiry is 30 minutes.
+If remaining members are all disconnected, the host is temporarily null; the
+first eligible resume fills that vacancy. Membership/connectivity changes clear
+all ready flags. Fresh accepted lobby commands/admissions refresh idle time;
+pings, rejected commands and replayed replies do not. Inbound inactivity detection
+is 30 seconds, separate from the subsequent membership grace.
 Finished/aborted rooms use the same membership grace and host-transfer policy;
 they do not pause an already terminal simulation.
 

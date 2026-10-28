@@ -1,15 +1,17 @@
 # One Job server
 
 Current functionality: independent `GET /health` and `/ws` ping/pong/typed errors.
-Reserved room/gameplay commands return `feature_unavailable`; no rooms exist yet.
+Phase 04 supports create/join/ready/leave/state, stable credentials, resume/fencing,
+disconnect grace, host transfer, idle expiry and bounded reply replay. Eligible
+start remains `feature_unavailable`; no room launches gameplay.
 The package uses a `src/` layout and Python 3.12+. Phase 01 also provides pure,
 immutable domain values with constructor validation; see the
 [model API and construction example](../docs/GAME_STATE.md#implemented-python-api).
 Phase 02 adds a synchronous fixed-step engine for power, lanes, coolant,
-heat/damage and victory/defeat timing. It has no emergency scheduler, rooms,
+heat/damage and victory/defeat timing. It has no emergency scheduler,
 live WebSocket gameplay or full control catalog yet. Phase 03 adds strict v1
 DTOs, a bounded connection supervisor, redacted logs and a fixture-only engine
-adapter. See the [implemented protocol subset](../docs/NETWORK_PROTOCOL.md#implemented-phase-03-subset).
+adapter. See the [implemented protocol subset](../docs/NETWORK_PROTOCOL.md#implemented-phase-04-subset).
 
 From this directory:
 
@@ -34,7 +36,7 @@ Observed foundation results and tool versions are recorded in
 [FOUNDATION_VALIDATION.md](../docs/FOUNDATION_VALIDATION.md).
 
 `one_job.main.create_app()` creates an isolated app with lifespan-owned connections;
-tests can inject a clock and `ConnectionSettings`. The health route
+tests can inject a clock, `ConnectionSettings` and `RoomSettings`. The health route
 uses a Pydantic response model and reports liveness only. `application/` owns
 connection I/O/tasks; `protocol/` validates/maps allowlisted DTOs. The implemented
 `domain/` package is independent of the health service and contains ordinary
@@ -62,14 +64,17 @@ With the local server running, use a second terminal:
 
 ```bash
 uv run python examples/websocket_smoke.py
+uv run python examples/lobby_smoke.py
 uv run pytest tests/protocol tests/api tests/application
 ```
 
 The client checks health, correlated pong, unavailable/unknown operations and
-documented invalid JSON/version closes. All sockets expire after ten seconds
-because admission remains Phase 04. Lifecycle logs contain only allowlisted
+documented invalid JSON/version closes. The lobby client uses three sockets to
+check admission, readiness, unavailable start, leave, disconnect/resume, matching
+revisions and host transfer without printing credentials. Unadmitted sockets
+expire after ten seconds; admission cancels that deadline. Lifecycle logs contain only allowlisted
 metadata; never enable raw WebSocket debug logs with real credentials. Current
-results and limitations: [SERVER_FOUNDATION_VALIDATION.md](../docs/SERVER_FOUNDATION_VALIDATION.md).
+results and limitations: [LOBBY_VALIDATION.md](../docs/LOBBY_VALIDATION.md).
 
 For real-phone development later, bind to a reachable private address and use
 the debug transport configuration introduced in Phase 06. Phase 00 has no

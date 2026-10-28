@@ -51,7 +51,7 @@ def test_future_commands_never_admit_or_call_engine(kind, clock):
             response = socket.receive_json()
             assert_error(response, "feature_unavailable")
             assert "PRIVATE_TOKEN_SENTINEL" not in json.dumps(response)
-            assert not hasattr(application.state, "rooms")
+            assert application.state.rooms.room_count == 0
             assert not hasattr(application.state, "engine")
 
 
@@ -109,7 +109,7 @@ def test_deadline_is_ten_seconds_and_ping_does_not_extend_it(clock):
             socket.portal.call(clock.advance, 9)
             socket.send_json(frame())
             assert socket.receive_json()["type"] == "pong"
-            socket.send_json(frame("create_room", request_id="future"))
+            socket.send_json(frame("join_display", request_id="future"))
             assert_error(socket.receive_json(), "feature_unavailable", "future")
             socket.portal.call(clock.advance, 1)
             assert_error(socket.receive_json(), "not_authenticated", None)
@@ -121,7 +121,7 @@ def test_heartbeat_budget_is_separate_and_sustained_abuse_closes(clock):
         with client.websocket_connect("/ws") as socket:
             for index in range(40):
                 socket.send_json(frame("request_state", request_id=f"c-{index}"))
-                assert_error(socket.receive_json(), "feature_unavailable", f"c-{index}")
+                assert_error(socket.receive_json(), "not_authenticated", f"c-{index}")
             for index in range(3):
                 socket.send_json(frame(request_id=f"p-{index}"))
                 assert socket.receive_json()["type"] == "pong"
@@ -184,7 +184,7 @@ def test_lifecycle_logs_are_allowlisted_even_for_malformed_and_secret_payloads(c
                     },
                 )
             )
-            assert_error(socket.receive_json(), "feature_unavailable")
+            assert_error(socket.receive_json(), "invalid_message")
             socket.send_json(frame("UNKNOWN_OPERATION_SENTINEL"))
             assert_error(socket.receive_json(), "unknown_type")
             socket.send_json(frame(request_id="INVALID ID SENTINEL"))

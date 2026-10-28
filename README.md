@@ -13,9 +13,9 @@ Phase 01 adds validated immutable Python domain values, including explicit
 station ownership and action shapes. Phase 02 adds the synchronous baseline
 engine for power, lane movement, coolant, heat/damage and round timing. Phase 03
 adds typed `/ws` ping/pong/errors, bounded connection cleanup and a fixture engine
-adapter. Rooms, live socket gameplay, seeded assignment, emergencies, remaining
-controls and gameplay
-screens are planned.
+adapter. Phase 04 adds authoritative rooms/lobbies, admission/resume credentials,
+readiness, host transfer and expiry. Live socket gameplay, seeded assignment,
+emergencies, remaining controls and gameplay screens are planned.
 See [the progress ledger](plans/plans.md) for validation gates and next work.
 
 ## Layout

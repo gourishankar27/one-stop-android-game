@@ -44,11 +44,11 @@ async def check(base_url: str) -> None:
             "payload": {"nonce": "hello"},
         }
         print("/ws ping: correlated pong, no room revision")
-        await socket.send(request("create_room", "future-1", {"name": "Crew"}))
+        await socket.send(request("join_display", "future-1", {"room_code": "AAAAAA"}))
         response = json.loads(await socket.recv())
         assert response["payload"]["code"] == "feature_unavailable"
         assert response["reply_to"] == "future-1"
-        print("create_room: feature_unavailable, no membership")
+        print("join_display: feature_unavailable, no membership")
         await socket.send(request("unknown", "unknown-1", {}))
         response = json.loads(await socket.recv())
         assert response["payload"]["code"] == "unknown_type"

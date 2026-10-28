@@ -3,9 +3,9 @@ import asyncio
 import pytest
 
 from one_job.application.outbox import Outbox
-from one_job.protocol.envelopes import PublicStateEnvelope, error_message
+from one_job.protocol.envelopes import PublicStateEnvelope, error_message, lobby_state
 from one_job.protocol.mapping import public_view
-from one_job.protocol.messages import ErrorCode, PublicStatePayload
+from one_job.protocol.messages import ErrorCode, LobbyStatePayload, PublicStatePayload
 
 
 def snapshot(engine, revision, *, reply_to=None, round_id=None):
@@ -17,6 +17,33 @@ def snapshot(engine, revision, *, reply_to=None, round_id=None):
         room_revision=revision,
         payload=PublicStatePayload(public=view),
     )
+
+
+def lobby(revision, reply_to=None):
+    return lobby_state(
+        LobbyStatePayload(
+            room_code="AAAAAA",
+            stage="lobby",
+            host_player_id=None,
+            players=(),
+            can_start=False,
+        ),
+        revision,
+        reply_to,
+    )
+
+
+async def test_lobby_coalescing_preserves_correlated_reply_and_distinct_snapshot_type(engine):
+    box = Outbox(3)
+    assert box.offer(lobby(1))
+    public = snapshot(engine, 2)
+    correlated = lobby(2, "state")
+    assert box.offer(public)
+    assert box.offer(correlated)
+    assert box.offer(lobby(2))
+    assert (await box.get()).message == public
+    assert (await box.get()).message == correlated
+    assert (await box.get()).message == lobby(2)
 
 
 async def test_coalesce_snapshot_at_tail_preserves_critical_reply_order(engine):

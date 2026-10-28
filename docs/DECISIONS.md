@@ -223,6 +223,50 @@ admission or gameplay. NETWORK_PROTOCOL.md and fixtures distinguish this subset
 from planned v1 behavior. Android networking/codec fixtures remain Phase 06;
 there is no current Android socket implementation to change.
 
+## ADR-014 — Lobby ownership, credential replay and expiry boundaries
+
+Date: 2026-10-28
+
+Status: Accepted
+
+Context: Phase 04 needs serialized admissions, stable credentials and bounded
+request replay without retaining plaintext tokens in membership or reply caches.
+The planned host-transfer policy also needs a valid representation when every
+remaining member is disconnected.
+
+Decision: Each room has one mailbox/owner task. A registry admission lock
+serializes code allocation and admission lookup; room owners mutate members and
+update registry indexes synchronously, without socket I/O or awaiting that lock.
+Expiry is checked before each command as well as on injected-clock deadlines.
+One logical mutation increments the revision once, including ready resets and
+host transfer. No-op commands/replays do not increment it.
+
+Use an ephemeral 256-bit process key and HMAC-SHA256 of a versioned prefix plus
+the secure membership UUID to issue a stable opaque 256-bit resume token. Store
+only its SHA256 digest in membership/indexes. Cached admission receipts hold
+credential-free identifiers/revision; reconstruct the token only into targeted
+outgoing replies. Cache SHA256 signatures of normalized commands and at most
+128 terminal replies for 30 seconds, preserving the original reply revision.
+The key, credential input and targeted outbox frames remain private; neither the
+registry nor replay records retain plaintext credentials. Restart discards the
+key and all memberships. Compare token digests using constant-time comparison.
+This uses standard-library secrets/hmac primitives, not game randomness.
+
+Disconnected members reserve their seat and host identity for 30 seconds. Remove
+expired memberships before processing a resume at that exact boundary. Transfer
+an absent host to the earliest joined connected member (UUID tie-break). If none
+is connected, `host_player_id` is null until the first eligible resume. Joining,
+leaving, disconnecting and reconnecting clear all ready flags. Valid fresh lobby
+commands/admissions refresh the 30-minute idle deadline; ping, rejected commands
+and cached replays do not. Inbound inactivity is a separate 30-second connection
+deadline, followed by membership grace. Timer tasks and room owners are awaited
+at shutdown. Start checks host/stage/connected-ready count but stays unavailable.
+
+Consequences: The initial implemented v1 lobby schema permits a temporarily
+vacant host; no Android codec exists to migrate before Phase 06. All session
+errors are safe and targeted. No game runner, roles or observer membership is
+created. Later phases can reuse eligibility and room ownership.
+
 ## Decisions still deferred
 
 External backend hosting and an open-source license are not selected. Phase 16 must start with an evidence-based local-networking decision. Phase 17 must specify its submarine mechanics after spaceship playtests. Phase 18 reevaluates current store requirements and crash-reporting needs without publishing anything.

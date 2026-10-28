@@ -1,4 +1,4 @@
-"""Lifespan-owned connection supervision; no membership or room behavior."""
+"""Lifespan-owned connection I/O; room owners provide membership authority."""
 
 import asyncio
 import logging
@@ -10,6 +10,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 from one_job.application.limits import MessageBudget
 from one_job.application.outbox import Outbox
+from one_job.application.rooms import RoomRegistry
 from one_job.application.timing import Clock, with_deadline
 from one_job.protocol.envelopes import (
     MAX_FRAME_BYTES,
@@ -32,29 +33,75 @@ class ConnectionSettings:
     admission_timeout: float = 10.0
     send_timeout: float = 5.0
     close_timeout: float = 1.0
+    inactivity_timeout: float = 30.0
 
     def __post_init__(self) -> None:
         if type(self.queue_capacity) is not int or self.queue_capacity < 1:
             raise ValueError("queue capacity must be positive")
-        for value in (self.admission_timeout, self.send_timeout, self.close_timeout):
+        for value in (
+            self.admission_timeout,
+            self.send_timeout,
+            self.close_timeout,
+            self.inactivity_timeout,
+        ):
             if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
                 raise ValueError("connection timeouts must be positive and finite")
 
 
 class Connection:
     def __init__(
-        self, socket: WebSocket, generation: int, clock: Clock, settings: ConnectionSettings
+        self,
+        socket: WebSocket,
+        generation: int,
+        clock: Clock,
+        settings: ConnectionSettings,
+        rooms: RoomRegistry | None = None,
     ) -> None:
         self.socket = socket
         self.generation = generation
         self.clock = clock
         self.settings = settings
+        self.rooms = rooms
         self.outbox = Outbox(settings.queue_capacity)
         self.closed = asyncio.Event()
+        self.released = asyncio.Event()
         self._closing = asyncio.Event()
         self._close_code: int | None = None
         self._tasks: set[asyncio.Task[None]] = set()
         self._budget = MessageBudget(clock.now())
+        self._admitted = False
+        self._admission_task: asyncio.Task[None] | None = None
+        self._admission_at = clock.now() + settings.admission_timeout
+        self._last_activity = clock.now()
+        self._finishing = False
+
+    @property
+    def active(self) -> bool:
+        return not self._closing.is_set() and not self._finishing
+
+    def admit(self) -> bool:
+        if not self.active or self._admitted or self.clock.now() >= self._admission_at:
+            return False
+        self._admitted = True
+        if self._admission_task is not None:
+            self._admission_task.cancel()
+        return True
+
+    def finish(self, message: ServerMessage, code: int) -> None:
+        if not self.active:
+            return
+        delivered = asyncio.Event()
+        if not self.offer(message, delivered):
+            return
+        self._finishing = True
+        task = asyncio.create_task(
+            self._finish_delivery(delivered, code), name=f"one_job:{self.generation}:final"
+        )
+        self._tasks.add(task)
+
+    async def _finish_delivery(self, delivered: asyncio.Event, code: int) -> None:
+        await delivered.wait()
+        self.request_close(code)
 
     @property
     def task_count(self) -> int:
@@ -66,7 +113,7 @@ class Connection:
             self._closing.set()
 
     def offer(self, message: ServerMessage, delivered: asyncio.Event | None = None) -> bool:
-        if self._closing.is_set():
+        if not self.active:
             return False
         if not self.outbox.offer(message, delivered):
             self.request_close(1013)
@@ -106,10 +153,17 @@ class Connection:
             await self.socket.accept()
             self._log("connection_opened", self.clock.now())
             while not self._closing.is_set():
+                if self._finishing:
+                    await self._closing.wait()
+                    return
                 frame = await self.socket.receive()
                 if frame["type"] == "websocket.disconnect":
                     self.request_close(None)
                     return
+                if not self.active:
+                    await self._closing.wait()
+                    return
+                self._last_activity = self.clock.now()
                 start = self.clock.now()
                 request_id: str | None = None
                 operation: str | None = None
@@ -134,6 +188,10 @@ class Connection:
                         )
                 if failure is not None:
                     await self._failure(failure)
+                elif self.rooms is not None:
+                    code = await self.rooms.dispatch(self, message)
+                    if code is not None:
+                        failure = FrameError(code, request_id, operation=operation)
                 elif isinstance(message, PingEnvelope):
                     self.offer(pong(message))
                 else:
@@ -179,27 +237,44 @@ class Connection:
             self.request_close(1011)
 
     async def _admission_deadline(self, deadline: float) -> None:
-        await self.clock.wait_until(deadline)
-        await self._failure(FrameError(ErrorCode.NOT_AUTHENTICATED, close_code=1008))
+        try:
+            await self.clock.wait_until(deadline)
+            if not self._admitted:
+                await self._failure(FrameError(ErrorCode.NOT_AUTHENTICATED, close_code=1008))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.request_close(1011)
 
-    async def _wait_close(self) -> None:
-        await self._closing.wait()
+    async def _inactivity_deadline(self) -> None:
+        try:
+            while True:
+                deadline = self._last_activity + self.settings.inactivity_timeout
+                await self.clock.wait_until(deadline)
+                if self.clock.now() >= self._last_activity + self.settings.inactivity_timeout:
+                    self.request_close(1001)
+                    return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.request_close(1011)
 
     async def run(self) -> None:
         start = self.clock.now()
         try:
+            self._admission_task = asyncio.create_task(
+                self._admission_deadline(self._admission_at),
+                name=f"one_job:{self.generation}:admission",
+            )
             self._tasks = {
                 asyncio.create_task(self._reader(), name=f"one_job:{self.generation}:reader"),
                 asyncio.create_task(self._writer(), name=f"one_job:{self.generation}:writer"),
+                self._admission_task,
                 asyncio.create_task(
-                    self._admission_deadline(start + self.settings.admission_timeout),
-                    name=f"one_job:{self.generation}:admission",
+                    self._inactivity_deadline(), name=f"one_job:{self.generation}:idle"
                 ),
-                asyncio.create_task(self._wait_close(), name=f"one_job:{self.generation}:close"),
             }
-            done, _ = await asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                task.result()
+            await self._closing.wait()
         except asyncio.CancelledError:
             self.request_close(1001)
             raise
@@ -230,9 +305,12 @@ class Connection:
 
 
 class ConnectionManager:
-    def __init__(self, clock: Clock, settings: ConnectionSettings) -> None:
+    def __init__(
+        self, clock: Clock, settings: ConnectionSettings, rooms: RoomRegistry | None = None
+    ) -> None:
         self.clock = clock
         self.settings = settings
+        self.rooms = rooms
         self._connections: set[Connection] = set()
         self._generation = 0
         self._stopping = False
@@ -250,16 +328,22 @@ class ConnectionManager:
             await socket.close(code=1001)
             return
         self._generation += 1
-        connection = Connection(socket, self._generation, self.clock, self.settings)
+        connection = Connection(socket, self._generation, self.clock, self.settings, self.rooms)
         self._connections.add(connection)
         try:
             await connection.run()
         finally:
-            self._connections.discard(connection)
+            with CancelScope(shield=True):
+                try:
+                    if self.rooms is not None:
+                        await self.rooms.disconnect(connection)
+                finally:
+                    self._connections.discard(connection)
+                    connection.released.set()
 
     async def aclose(self) -> None:
         self._stopping = True
         connections = tuple(self._connections)
         for connection in connections:
             connection.request_close(1001)
-        await asyncio.gather(*(connection.closed.wait() for connection in connections))
+        await asyncio.gather(*(connection.released.wait() for connection in connections))
