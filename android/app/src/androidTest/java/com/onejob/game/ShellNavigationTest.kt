@@ -2,16 +2,19 @@ package com.onejob.game
 
 import android.Manifest
 import android.content.pm.PackageManager
+import com.onejob.game.app.OneJobApplication
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.espresso.Espresso
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -25,15 +28,13 @@ class ShellNavigationTest {
     @Test
     fun everyFutureDestinationIsTruthfulAndSystemBackReturnsHome() {
         for ((button, title) in listOf(
-            "Preview lobby" to "Lobby preview",
-            "Preview role briefing" to "Role briefing preview",
             "Preview gameplay" to "Gameplay preview",
             "Preview results" to "Results preview",
         )) {
             open(button)
             compose.onNodeWithText(title).assertIsDisplayed()
             compose.onNodeWithText("Preview — not implemented").assertIsDisplayed()
-            compose.onNodeWithText("No room or game session is open.").assertIsDisplayed()
+            compose.onNodeWithText("This preview contains no live room or game view.").assertIsDisplayed()
             Espresso.pressBack()
             compose.onNodeWithText("ONE JOB").performScrollTo().assertIsDisplayed()
         }
@@ -41,43 +42,43 @@ class ShellNavigationTest {
 
     @Test
     fun joinDraftAndDestinationSurviveActivityRecreationThenBackReturnsHome() {
-        open("Join room setup")
+        open("Join room")
         compose.onNodeWithTag("nameInput").performTextInput("Saved crew")
         compose.onNodeWithTag("codeInput").performScrollTo().performTextInput("aBcD23")
-        open("Check draft")
-        compose.onNodeWithText("Draft looks good. Online play is not connected yet.")
-            .performScrollTo().assertIsDisplayed()
         compose.activityRule.scenario.recreate()
-        compose.onNodeWithText("Join room draft").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("Join room").onFirst().performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("nameInput").assertTextContains("Saved crew")
         compose.onNodeWithTag("codeInput").assertTextContains("aBcD23")
-        compose.onNodeWithText("Draft looks good. Online play is not connected yet.")
-            .performScrollTo().assertIsDisplayed()
         open("Back")
         compose.onNodeWithText("ONE JOB").performScrollTo().assertIsDisplayed()
     }
 
     @Test
+    fun activityRecreationRetainsTheApplicationRepositoryOwner() {
+        val before = (compose.activity.application as OneJobApplication).container.gameRepository
+        compose.activityRule.scenario.recreate()
+        val after = (compose.activity.application as OneJobApplication).container.gameRepository
+        org.junit.Assert.assertSame(before, after)
+    }
+
+    @Test
     fun createValidationStaysLocalAndJoinStartsWithItsOwnDraft() {
-        open("Create room setup")
-        open("Check draft")
+        open("Create room")
+        compose.onNodeWithTag("submitAdmission").performScrollTo().performClick()
         compose.onNodeWithText("Enter a player name.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("nameInput").performScrollTo().performTextInput("Captain")
-        open("Check draft")
-        compose.onNodeWithText("Draft looks good. Online play is not connected yet.")
-            .performScrollTo().assertIsDisplayed()
         open("Back")
-        open("Join room setup")
+        open("Join room")
         compose.onNodeWithTag("nameInput").assertTextContains("")
-        compose.onNodeWithText("Local draft only").assertIsDisplayed()
+        compose.onNodeWithText("Choose your name. Join the same room code as your friends.").assertIsDisplayed()
         Espresso.pressBack()
         compose.onNodeWithText("ONE JOB").performScrollTo().assertIsDisplayed()
     }
 
     @Test
-    fun installedShellHasNoNetworkPermission() {
+    fun installedNetworkingShellHasNetworkPermission() {
         val activity = compose.activity
         val info = activity.packageManager.getPackageInfo(activity.packageName, PackageManager.GET_PERMISSIONS)
-        assertFalse(info.requestedPermissions.orEmpty().contains(Manifest.permission.INTERNET))
+        assertTrue(info.requestedPermissions.orEmpty().contains(Manifest.permission.INTERNET))
     }
 }

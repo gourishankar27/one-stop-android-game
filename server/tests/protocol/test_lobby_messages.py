@@ -39,8 +39,9 @@ class FixtureReply(RootModel[ServerMessage]):
     pass
 
 
-def test_shared_phase04_contract_fixtures():
-    path = Path(__file__).resolve().parents[3] / "docs/protocol-fixtures/phase04.json"
+@pytest.mark.parametrize("filename", ["phase04.json", "phase06.json"])
+def test_shared_lobby_contract_fixtures(filename):
+    path = Path(__file__).resolve().parents[3] / "docs/protocol-fixtures" / filename
     for case in json.loads(path.read_text(encoding="utf-8")):
         request = parse_text(json.dumps(case["request"]))
         reply = FixtureReply.model_validate_json(json.dumps(case["response"])).root
@@ -82,8 +83,6 @@ def test_lobby_and_reserved_operation_sets_do_not_overlap():
         "request_state",
     }
     assert RESERVED_TYPES == {
-        "briefing_ready",
-        "player_action",
         "play_again",
         "return_to_lobby",
         "join_display",

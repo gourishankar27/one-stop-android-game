@@ -1,43 +1,85 @@
 # UI, navigation and interaction
 
-Phase 05 implements a navigation shell and local draft forms. Connected
-multiplayer screens below remain planned.
+Phase 07 binds usable create/join/lobby screens to the Phase 06 repository.
+Phase 08 adds private server-assigned briefing. Gameplay and results remain
+labelled future previews.
 Use Material 3 and ordinary phone layouts before final visual design. A portrait
 layout is the first target; preserve state on rotation and do not lock orientation
 as a substitute for lifecycle handling.
 
 ## Navigation
 
-### Current Phase 05 shell
+### Current Phase 08 lobby and briefing flow
 
-Home opens Create/Join setup or explicitly labelled previews. Setup edits only a
-local draft and offers **Check draft**; it cannot create/join or navigate into a
-fake room. The preview routes contain explanatory text, no simulated roster,
-private role, ship statistics or outcome. Every preview states that no session
-is open. System Back and the visible Back control return to Home.
+Home opens Create/Join or explicitly labelled future previews. Forms validate
+name/code hints, normalize the submitted values and call the shared repository.
+Only a server-admitted identity opens Lobby. Rejected requests retain typed inputs;
+pending requests disable repeated submission. An uncertain admission shows that
+the command may have happened, requires an explicit clear-attempt action and
+never retries itself. Back cancels the attempt and closes transport, or leaves
+if admission already succeeded. The preview routes contain explanatory text, no simulated roster,
+private role, ship statistics or outcome. Every preview states that it contains
+no live room/game view. System Back and the visible Back control return to Home.
+The former debug transport panel is no longer rendered on Home; its debug source
+remains available. Normal forms now exercise the real admission flow.
 
 | Destination | Implemented contents / state |
 | --- | --- |
-| Home | Title/status, Create/Join setup and four future-screen preview links |
-| Create | Local name draft and validation hints; connection unavailable |
-| Join | Local name/code draft and validation hints; connection unavailable |
-| Lobby | Placeholder describing future server roster/readiness |
-| Role | Placeholder describing future server-assigned private instructions |
+| Home | Title, Create/Join, session-end feedback and two future-screen preview links |
+| Create | Name, validation, pending/error/uncertainty feedback, actual Create |
+| Join | Name/six-symbol code, normalization, retained errors and actual Join |
+| Lobby | Large room code, ID-keyed roster, host/you markers, connected/ready labels, local Ready, host Start and confirmed Leave |
+| Role | Own assigned station metadata, explicit read/acknowledgement, dual-station switch, hold/pause/abort and confirmed Leave |
 | Gameplay | Placeholder describing future station controls/shared state |
 | Results | Placeholder describing future server-provided outcome |
 
 Create/Join have separate navigation-entry ViewModels. Name/code/check state is
 saved through `SavedStateHandle` and survives activity recreation/rotation. Popping
-the form removes its entry/draft; it does not represent leaving a membership.
+the form cancels its attempt and removes its entry/draft.
 Raw nonsecret typed inputs are retained while checking trimmed/case-insensitive
-values. No session credential is saved, and no form action invokes a repository
-command or network operation. State is collected with lifecycle awareness.
+values. No session credential, pending command or authoritative snapshot is saved.
+State is collected with lifecycle awareness; network I/O stays in the repository.
+
+Lobby readiness changes only from a server snapshot. Duplicate names remain
+separate members keyed by player ID; only the local member has a Ready control.
+Start requires the local host and server `can_start`, and disabled Start explains
+whether it needs players, connectivity, readiness or a server update. A valid
+start opens Role only from the authoritative briefing stage/private snapshots.
+Both system Back and Leave ask for confirmation. Expiry/
+removal returns Home. Recovery clears the roster, disables commands and waits for
+the fresh snapshot without duplicating members. Leave also works during recovery.
+
+`RoleViewModel` consumes the repository's matched owned assignment/state; Compose
+never chooses roles or derives ownership from host status. Only owned station
+buttons and the selected station's two short instructions are rendered. The
+Engineer+Shields participant switches between both; each must be explicitly
+marked read below its instructions before the acknowledgement button enables.
+No private numeric control panel is rendered in this phase. Acknowledgement is
+pending until server state confirms it, and repeated taps cannot send duplicates.
+
+The server's completed briefing displays “Briefings complete. Gameplay is not
+available in this build.” It remains on Role without countdown or local clock.
+Pause explains that both briefing and deadline are suspended for reconnect.
+Recovery clears private metadata/read selections until a matching fresh private
+snapshot arrives; server acknowledgement survives resume. An abort explains
+timeout, departure or expired grace and offers confirmed Leave. It does not open
+the future Results preview. Membership and recovery routes derive from server
+stage; Back never silently abandons a room.
+
+Phase 08 device, private-frame and timeout evidence is recorded in
+[ROLE_SYSTEM_VALIDATION.md](ROLE_SYSTEM_VALIDATION.md).
 
 The existing Material 3 light/dark theme is retained. Pages use system/IME insets,
 a centered maximum content width and vertical scrolling without fixed text
 heights. The shell was inspected in portrait/landscape and at font scale 2.0;
 larger content remains reachable by scrolling. This is functional foundation UI,
 not the final game presentation.
+
+Phase 07 screenshot/behavior evidence is recorded in
+[LOBBY_UI_VALIDATION.md](LOBBY_UI_VALIDATION.md). Ignored local captures include
+the two-client eligible host response, recovery without stale members, and the
+lobby/leave dialog at font scale 2.0. These are functional Material 3 screens;
+no final visual design or completed round is claimed.
 
 ### Planned connected navigation
 
@@ -67,7 +109,7 @@ their features exist. Startup should use the platform splash rather than add an
 artificial waiting screen. Back from lobby asks before leaving membership; back
 from gameplay offers leave confirmation. Canceling that dialog keeps the session.
 Do not replace server leave semantics with local navigation.
-Those membership/leave dialogs do not apply to the current session-free previews.
+Those membership dialogs apply to the live lobby, not the session-free previews.
 
 ## Screen contract
 

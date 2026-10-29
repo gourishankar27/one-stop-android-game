@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
+from one_job.application.round_service import RoundService
 from one_job.application.sessions import (
     AdmissionReceipt,
     Peer,
@@ -17,16 +18,22 @@ from one_job.application.sessions import (
     command_signature,
     token_digest,
 )
+from one_job.domain.models import Player
+from one_job.domain.types import PlayerId, ResultReason, RoundId
 from one_job.protocol.envelopes import (
+    BriefingReadyEnvelope,
     ClientMessage,
     CreateRoomEnvelope,
     ErrorEnvelope,
     JoinRoomEnvelope,
     LeaveRoomEnvelope,
     PingEnvelope,
+    PlayerActionEnvelope,
     PlayerReadyEnvelope,
     RequestStateEnvelope,
     ResumeSessionEnvelope,
+    RoleAssignedEnvelope,
+    RoleStateEnvelope,
     ServerMessage,
     StartGameEnvelope,
     ack,
@@ -84,6 +91,7 @@ class RoomService:
         self.members: dict[UUID, Member] = {}
         self.host_id: UUID | None = None
         self.stage: LobbyStage = "lobby"
+        self.round: RoundService | None = None
         self.revision = 0
         self.idle_deadline = registry.clock.now() + registry.settings.idle_timeout
         self._joined_order = 0
@@ -106,6 +114,11 @@ class RoomService:
             while not self._closed:
                 deadline = min(
                     [self.idle_deadline]
+                    + (
+                        [self.round.deadline]
+                        if self.round is not None and self.round.deadline is not None
+                        else []
+                    )
                     + [
                         member.session.disconnect_deadline
                         for member in self.members.values()
@@ -181,11 +194,31 @@ class RoomService:
             can_start=start_eligibility(self.stage, tuple(self.members.values())),
         )
 
-    def broadcast(self) -> None:
+    def broadcast(self, assignments: bool = False) -> None:
         message = lobby_state(self.view(), self.revision)
         for member in self.members.values():
             if member.session.peer is not None:
                 member.session.peer.offer(message)
+                if self.round is not None:
+                    if assignments:
+                        member.session.peer.offer(self.assignment(member.player_id))
+                    member.session.peer.offer(self.role_state(member.player_id))
+
+    def assignment(self, player_id: UUID) -> RoleAssignedEnvelope:
+        assert self.round is not None
+        return RoleAssignedEnvelope(
+            reply_to=None,
+            room_revision=self.revision,
+            payload=self.round.assigned(PlayerId(player_id)),
+        )
+
+    def role_state(self, player_id: UUID, reply_to: str | None = None) -> RoleStateEnvelope:
+        assert self.round is not None
+        return RoleStateEnvelope(
+            reply_to=reply_to,
+            room_revision=self.revision,
+            payload=self.round.view(PlayerId(player_id), self.registry.clock.now()),
+        )
 
     def admission(self, member: Member, message: ClientMessage) -> AdmissionReceipt:
         return AdmissionReceipt(self.code, member.player_id, message.request_id, self.revision)
@@ -276,8 +309,22 @@ class RoomService:
         if cached is None:
             session.remember(message, receipt, self.registry.clock.now())
         peer.offer(self.materialize(receipt))
+        if self.round is not None:
+            if not self.round.terminal and self.all_participants_connected():
+                self.round.resume(self.registry.clock.now())
+            self.stage = self.round.stage
+            peer.offer(self.assignment(player_id))
         self.broadcast()
         return None
+
+    def all_participants_connected(self) -> bool:
+        assert self.round is not None
+        for participant in self.round.engine.snapshot().players:
+            member = self.members.get(participant.player_id)
+            peer = member.session.peer if member is not None else None
+            if peer is None or not peer.active:
+                return False
+        return True
 
     def command(self, player_id: UUID, peer: Peer, message: ClientMessage) -> ErrorCode | None:
         member = self.members.get(player_id)
@@ -305,7 +352,12 @@ class RoomService:
             reply: ReplayReply = pong(message).model_copy(update={"room_revision": self.revision})
         elif isinstance(message, RequestStateEnvelope):
             self.touch()
-            reply = lobby_state(self.view(), self.revision, message.request_id)
+            if self.round is None:
+                reply = lobby_state(self.view(), self.revision, message.request_id)
+            else:
+                peer.offer(lobby_state(self.view(), self.revision))
+                peer.offer(self.assignment(player_id))
+                reply = self.role_state(player_id, message.request_id)
         elif isinstance(message, PlayerReadyEnvelope):
             if self.stage != "lobby":
                 code = ErrorCode.INVALID_STAGE
@@ -318,6 +370,9 @@ class RoomService:
                 self.touch()
                 reply = ack(message.request_id, self.revision, "player_ready")
         elif isinstance(message, LeaveRoomEnvelope):
+            if self.round is not None and not self.round.terminal:
+                self.round.abort(ResultReason.PLAYER_LEFT)
+                self.stage = self.round.stage
             self._remove(member)
             self.reset_ready()
             if self.host_id == player_id:
@@ -338,7 +393,56 @@ class RoomService:
             elif not start_eligibility(self.stage, tuple(self.members.values())):
                 code = ErrorCode.NOT_READY
             else:
-                code = ErrorCode.FEATURE_UNAVAILABLE
+                self.round = RoundService(
+                    self.registry.game_config,
+                    self.registry.seed_factory(),
+                    tuple(
+                        Player(PlayerId(item.player_id), item.name)
+                        for item in self.members.values()
+                    ),
+                    RoundId(self.registry.round_id_factory()),
+                    now,
+                    self.registry.settings.briefing_timeout,
+                )
+                self.stage = self.round.stage
+                self.revision += 1
+                self.touch()
+                reply = ack(message.request_id, self.revision, "start_game")
+                session.remember(message, reply, now)
+                peer.offer(reply)
+                self.broadcast(assignments=True)
+                return None
+            reply = error_message(code, message.request_id, self.revision)
+        elif isinstance(message, BriefingReadyEnvelope):
+            if self.round is None:
+                code = ErrorCode.INVALID_STAGE
+            else:
+                was_terminal = self.round.terminal
+                code, changed = self.round.acknowledge(
+                    PlayerId(player_id), message.payload.round_id, now
+                )
+                self.stage = self.round.stage
+                if not was_terminal and self.round.terminal:
+                    # Expiry may be crossed after the owner's earlier deadline check.
+                    self.revision += 1
+                    self.broadcast()
+            if code is None:
+                if changed:
+                    self.revision += 1
+                self.touch()
+                reply = ack(message.request_id, self.revision, "briefing_ready")
+            else:
+                reply = error_message(code, message.request_id, self.revision)
+        elif isinstance(message, PlayerActionEnvelope):
+            code = (
+                ErrorCode.INVALID_STAGE
+                if self.round is None
+                else self.round.action_error(
+                    PlayerId(player_id),
+                    message.payload.round_id,
+                    message.payload.action,
+                )
+            )
             reply = error_message(code, message.request_id, self.revision)
         elif isinstance(message, (CreateRoomEnvelope, JoinRoomEnvelope, ResumeSessionEnvelope)):
             code = ErrorCode.INVALID_STAGE
@@ -367,6 +471,9 @@ class RoomService:
             self.registry.clock.now() + self.registry.settings.disconnect_grace
         )
         self.reset_ready()
+        if self.round is not None:
+            self.round.pause(self.registry.clock.now())
+            self.stage = self.round.stage
         self.revision += 1
         self.broadcast()
 
@@ -391,8 +498,17 @@ class RoomService:
             if member.session.disconnect_deadline is not None
             and member.session.disconnect_deadline <= now
         ]
+        round_expired = self.round.expire(now) if self.round is not None else False
         if not expired:
+            if round_expired:
+                assert self.round is not None
+                self.stage = self.round.stage
+                self.revision += 1
+                self.broadcast()
             return
+        if self.round is not None and not self.round.terminal:
+            self.round.abort(ResultReason.DISCONNECT_TIMEOUT)
+            self.stage = self.round.stage
         for member in expired:
             self._remove(member)
         if self.host_id not in self.members:

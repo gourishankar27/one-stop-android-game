@@ -51,7 +51,7 @@ def closed(socket, code):
     assert caught.value.code == code
 
 
-def lobby(socket, reply_to=None):
+def lobby(socket, reply_to=None, stage="lobby"):
     response = receive(socket)
     assert response["version"] == 1
     assert response["type"] == "lobby_state"
@@ -60,7 +60,7 @@ def lobby(socket, reply_to=None):
     assert response["room_revision"] >= 0
     payload = response["payload"]
     assert set(payload) == {"room_code", "stage", "host_player_id", "players", "can_start"}
-    assert payload["stage"] == "lobby"
+    assert payload["stage"] == stage
     assert all(
         set(player) == {"player_id", "name", "connected", "ready"} for player in payload["players"]
     )
@@ -105,7 +105,7 @@ def request_state(socket, request_id="state"):
     return lobby(socket, request_id)
 
 
-def test_three_clients_share_roster_revisions_and_start_stays_gated(clock):
+def test_three_clients_share_roster_revisions_and_start_enters_private_briefing(clock):
     with TestClient(create_app(clock=clock)) as client, ExitStack() as stack:
         host, second, third = [
             stack.enter_context(client.websocket_connect("/ws")) for _ in range(3)
@@ -145,10 +145,21 @@ def test_three_clients_share_roster_revisions_and_start_stays_gated(clock):
         send(second, "start_game", "not-host")
         error(second, "not_host", "not-host")
         send(host, "start_game", "start")
-        unavailable = error(host, "feature_unavailable", "start")
-        assert unavailable["room_revision"] == state["room_revision"]
-        fresh = request_state(host, "after-start")
-        same_lobby(fresh, state)
+        started = receive(host)
+        assert started["type"] == "ack" and started["payload"]["operation"] == "start_game"
+        assert started["room_revision"] == state["room_revision"] + 1
+        snapshots = []
+        owned_roles = []
+        for peer in (host, second, third):
+            snapshots.append(lobby(peer, stage="briefing"))
+            assignment, private = receive(peer), receive(peer)
+            assert assignment["type"] == "role_assigned"
+            assert private["type"] == "role_state"
+            assert set(private["payload"]["stations"]) == set(assignment["payload"]["roles"])
+            assert len(assignment["payload"]["roles"]) == 1
+            owned_roles.extend(assignment["payload"]["roles"])
+        same_lobby(*snapshots)
+        assert set(owned_roles) == {"pilot", "engineer", "shields"}
 
 
 @pytest.mark.parametrize("name", ["", "   ", "x" * 21, "A\nB", "A\x00B", 123, True, None])
@@ -228,7 +239,7 @@ def test_membership_join_and_explicit_leave_reset_ready_and_transfer_host(clock)
             closed(former, 1008)
 
 
-def test_start_checks_membership_host_and_readiness_before_feature_gate(clock):
+def test_start_checks_membership_host_and_readiness_before_briefing(clock):
     with TestClient(create_app(clock=clock)) as client, ExitStack() as stack:
         host, guest = [stack.enter_context(client.websocket_connect("/ws")) for _ in range(2)]
         send(guest, "start_game", "unadmitted")
@@ -249,7 +260,13 @@ def test_start_checks_membership_host_and_readiness_before_feature_gate(clock):
         same_lobby(eligible, lobby(guest))
         assert eligible["payload"]["can_start"]
         send(host, "start_game", "eligible")
-        error(host, "feature_unavailable", "eligible")
+        assert receive(host)["payload"] == {"operation": "start_game"}
+        for peer in (host, guest):
+            lobby(peer, stage="briefing")
+            assert receive(peer)["type"] == "role_assigned"
+            assert receive(peer)["type"] == "role_state"
+        send(host, "start_game", "start-again")
+        error(host, "invalid_stage", "start-again")
 
 
 def test_ready_replay_conflict_and_request_state_are_side_effect_free(clock):

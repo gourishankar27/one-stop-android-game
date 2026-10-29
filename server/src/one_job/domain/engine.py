@@ -106,6 +106,7 @@ class GameEngine:
         assignments: RoleAssignment,
         *,
         round_id: RoundId,
+        rng: Random | None = None,
     ) -> None:
         if not isinstance(config, GameConfig):
             raise ValueError("config must be a GameConfig value")
@@ -120,6 +121,10 @@ class GameEngine:
             round=RoundState(round_id, duration_ms=config.round_duration_ms),
         )
         self._rng = Random(seed)
+        if rng is not None:
+            if not isinstance(rng, Random):
+                raise ValueError("rng must be a Random")
+            self._rng.setstate(rng.getstate())
         self._accepted_actions: list[ActionApplied] = []
 
     def snapshot(self) -> GameState:
@@ -138,13 +143,96 @@ class GameEngine:
         )
         return self._state
 
+    def authorize_action(self, actor_id: PlayerId, action: PlayerAction) -> ActionCode:
+        """Check every typed station intent independently of simulation stage."""
+        if not isinstance(actor_id, UUID) or actor_id not in self._state.assignments.player_ids:
+            return ActionCode.NOT_PARTICIPANT
+        if type(action) not in (
+            MoveLane,
+            Evade,
+            SetEnginePower,
+            EngineBoost,
+            Coolant,
+            EmergencyShutdown,
+            SetShield,
+            RechargeShield,
+            ShieldBoost,
+        ):
+            return ActionCode.INVALID_ACTION
+        try:
+            action = replace(action)
+        except (ValueError, AttributeError):
+            return ActionCode.INVALID_ACTION
+        if self._state.assignments.owners[action.role] != actor_id:
+            return ActionCode.NOT_ROLE_OWNER
+        return ActionCode.ACCEPTED
+
+    def pause(self) -> GameState:
+        stage = self._state.round.stage
+        if stage not in (RoundStage.BRIEFING, RoundStage.COUNTDOWN, RoundStage.RUNNING):
+            raise ValueError("only active rounds can pause")
+        self._state = replace(
+            self._state,
+            round=replace(
+                self._state.round,
+                stage=RoundStage.PAUSED,
+                paused_from=stage,
+            ),
+        )
+        return self._state
+
+    def resume(self) -> GameState:
+        previous = self._state.round.paused_from
+        if self._state.round.stage != RoundStage.PAUSED or previous is None:
+            raise ValueError("only a paused round can resume")
+        self._state = replace(
+            self._state,
+            round=replace(
+                self._state.round,
+                stage=previous,
+                paused_from=None,
+            ),
+        )
+        return self._state
+
+    def abort(self, reason: ResultReason) -> GameState:
+        enumeration(reason, ResultReason, "reason")
+        if reason not in (
+            ResultReason.DISCONNECT_TIMEOUT,
+            ResultReason.PLAYER_LEFT,
+            ResultReason.BRIEFING_TIMEOUT,
+            ResultReason.SERVER_OVERLOAD,
+        ):
+            raise ValueError("an abort needs an abort reason")
+        if self._state.round.stage in (RoundStage.FINISHED, RoundStage.ABORTED):
+            return self._state
+        result = GameResult(
+            Outcome.ABORTED,
+            reason,
+            self._state.tick_index * TICK_MS,
+            self._state.ship.hull,
+            players=self._state.players,
+        )
+        self._state = replace(
+            self._state,
+            round=replace(
+                self._state.round,
+                stage=RoundStage.ABORTED,
+                paused_from=None,
+                countdown_remaining_ms=None,
+                result=result,
+            ),
+        )
+        return self._state
+
     def apply_action(self, actor_id: PlayerId, action: PlayerAction) -> ActionResult:
         """Apply supported intents immediately at the current completed-tick boundary."""
         state = self._state
         if state.round.stage != RoundStage.RUNNING:
             return ActionResult(ActionCode.INVALID_STAGE)
-        if not isinstance(actor_id, UUID) or actor_id not in state.assignments.player_ids:
-            return ActionResult(ActionCode.NOT_PARTICIPANT)
+        authorization = self.authorize_action(actor_id, action)
+        if authorization != ActionCode.ACCEPTED:
+            return ActionResult(authorization)
         if type(action) in (
             Evade,
             EngineBoost,

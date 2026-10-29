@@ -21,7 +21,7 @@ NonnegativeInt = Annotated[StrictInt, Field(ge=0)]
 Percent = Annotated[StrictInt, Field(ge=0, le=100)]
 Stage = Literal["briefing", "countdown", "running", "paused", "finished", "aborted"]
 LobbyStage = Literal["lobby", "briefing", "countdown", "running", "paused", "finished", "aborted"]
-AckOperation = Literal["leave_room", "player_ready"]
+AckOperation = Literal["leave_room", "player_ready", "start_game", "briefing_ready"]
 ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
@@ -85,6 +85,7 @@ class ErrorCode(StrEnum):
     SESSION_EXPIRED = "session_expired"
     INVALID_STAGE = "invalid_stage"
     INVALID_ACTION = "invalid_action"
+    STALE_ROUND = "stale_round"
     NOT_ROLE_OWNER = "not_role_owner"
     INSUFFICIENT_POWER = "insufficient_power"
     COOLDOWN = "cooldown"
@@ -108,6 +109,7 @@ ERROR_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.SESSION_EXPIRED: "The session is invalid or has expired.",
     ErrorCode.INVALID_STAGE: "The action is unavailable at this stage.",
     ErrorCode.INVALID_ACTION: "The action is invalid.",
+    ErrorCode.STALE_ROUND: "The action belongs to a different round.",
     ErrorCode.NOT_ROLE_OWNER: "The station is not owned by this player.",
     ErrorCode.INSUFFICIENT_POWER: "There is insufficient available power.",
     ErrorCode.COOLDOWN: "The action is cooling down.",
@@ -253,6 +255,41 @@ class CoolantInput(DTO):
     type: Literal["coolant"]
 
 
+class EvadeInput(DTO):
+    type: Literal["evade"]
+
+
+class EngineBoostInput(DTO):
+    type: Literal["engine_boost"]
+
+
+class EmergencyShutdownInput(DTO):
+    type: Literal["emergency_shutdown"]
+
+
+class SetShieldInput(DTO):
+    type: Literal["set_shield"]
+    active: StrictBool
+    facing: Literal["front", "left", "right", "rear"]
+
+
+class RechargeShieldInput(DTO):
+    type: Literal["recharge_shield"]
+
+
+class ShieldBoostInput(DTO):
+    type: Literal["shield_boost"]
+
+
 ActionInput = Annotated[
-    SetEnginePowerInput | MoveLaneInput | CoolantInput, Field(discriminator="type")
+    SetEnginePowerInput
+    | MoveLaneInput
+    | CoolantInput
+    | EvadeInput
+    | EngineBoostInput
+    | EmergencyShutdownInput
+    | SetShieldInput
+    | RechargeShieldInput
+    | ShieldBoostInput,
+    Field(discriminator="type"),
 ]

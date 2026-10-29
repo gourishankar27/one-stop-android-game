@@ -6,6 +6,7 @@ import com.onejob.game.MainDispatcherRule
 import com.onejob.game.data.ConnectionStatus
 import com.onejob.game.data.GameRepository
 import com.onejob.game.data.UnavailableGameRepository
+import com.onejob.game.data.repository.ConnectionState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,9 +23,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-private class FakeGameRepository : GameRepository {
+private class FakeGameRepository : GameRepository by UnavailableGameRepository() {
     val status = MutableStateFlow(ConnectionStatus.UNAVAILABLE)
     override val connectionStatus = status.asStateFlow()
+    override val connection = MutableStateFlow(ConnectionState(ConnectionStatus.UNAVAILABLE))
+    fun setStatus(value: ConnectionStatus) { status.value = value; connection.value = ConnectionState(value) }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -94,7 +97,7 @@ class RoomFormViewModelTest {
         runCurrent()
         for (status in listOf(ConnectionStatus.CONNECTING, ConnectionStatus.CONNECTED,
                               ConnectionStatus.RECONNECTING, ConnectionStatus.SESSION_EXPIRED)) {
-            repository.status.value = status
+            repository.setStatus(status)
             runCurrent()
             assertEquals(status, model.uiState.value.connectionStatus)
             assertEquals("Crew", model.uiState.value.name)
@@ -114,7 +117,7 @@ class RoomFormViewModelTest {
         runCurrent()
         assertEquals(setOf("draft.name", "draft.code", "draft.checked"), handle.keys())
         val restoredHandle = SavedStateHandle(handle.keys().associateWith { handle.get<Any?>(it) })
-        repository.status.value = ConnectionStatus.RECONNECTING
+        repository.setStatus(ConnectionStatus.RECONNECTING)
         val restored = model(repository = repository, handle = restoredHandle)
         observe(restored)
         assertEquals("Saved crew", restored.uiState.value.name)

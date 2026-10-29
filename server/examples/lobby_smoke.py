@@ -87,11 +87,11 @@ async def check(url: str) -> None:
             assert ack["room_revision"] == snapshots[0]["room_revision"]
             state = snapshots[0]
         assert state["payload"]["can_start"]
-        await send(host, "start_game", "start")
-        response = await receive(host)
-        assert response["payload"]["code"] == "feature_unavailable"
+        await send(guest, "start_game", "start")
+        response = await receive(guest)
+        assert response["payload"]["code"] == "not_host"
         assert response["room_revision"] == state["room_revision"]
-        print("Ready: all clients agree; eligible start explicitly feature_unavailable")
+        print("Ready: all clients agree; non-host Start rejected without leaving lobby")
         await send(third, "leave_room", "leave-third")
         assert (await receive(third))["type"] == "ack"
         await expect_close(third, 1000)

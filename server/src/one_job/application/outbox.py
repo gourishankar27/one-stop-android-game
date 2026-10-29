@@ -4,7 +4,12 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass
 
-from one_job.protocol.envelopes import LobbyStateEnvelope, PublicStateEnvelope, ServerMessage
+from one_job.protocol.envelopes import (
+    LobbyStateEnvelope,
+    PublicStateEnvelope,
+    RoleStateEnvelope,
+    ServerMessage,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,13 +35,13 @@ class Outbox:
         if self._closed:
             return False
         if (
-            isinstance(message, (PublicStateEnvelope, LobbyStateEnvelope))
+            isinstance(message, (PublicStateEnvelope, LobbyStateEnvelope, RoleStateEnvelope))
             and message.reply_to is None
         ):
             for item in tuple(self._items):
                 old = item.message
                 if (
-                    isinstance(old, (PublicStateEnvelope, LobbyStateEnvelope))
+                    isinstance(old, (PublicStateEnvelope, LobbyStateEnvelope, RoleStateEnvelope))
                     and type(old) is type(message)
                     and old.reply_to is None
                     and self._snapshot_key(old) == self._snapshot_key(message)
@@ -52,8 +57,8 @@ class Outbox:
         return True
 
     @staticmethod
-    def _snapshot_key(message: PublicStateEnvelope | LobbyStateEnvelope) -> str:
-        if isinstance(message, PublicStateEnvelope):
+    def _snapshot_key(message: PublicStateEnvelope | LobbyStateEnvelope | RoleStateEnvelope) -> str:
+        if isinstance(message, (PublicStateEnvelope, RoleStateEnvelope)):
             return message.payload.public.round_id
         return message.payload.room_code
 

@@ -14,6 +14,7 @@ available versions. Revisit versions together in a deliberate maintenance change
 | Android navigation | Navigation Compose 2.9.5 | Explicit Phase 05 shell graph; compatible with retained baseline |
 | Android lifecycle | runtime-compose, viewmodel-compose and viewmodel-savedstate 2.9.4 | Lifecycle-aware collection and navigation-entry saved state |
 | Android coroutines / JVM tests | coroutines-android/test 1.10.2; JUnit 4.13.2 | Explicit StateFlow/test-dispatcher setup in Phase 05 |
+| Android transport | OkHttp 4.12.0; kotlinx.serialization-json 1.9.0; serialization plugin 2.2.21 | Phase 06 typed WebSocket boundary; retained Kotlin baseline (ADR-015) |
 | Instrumented tests | AndroidX runner 1.7.0, JUnit extension 1.3.0, Espresso 3.7.0 | Explicit Espresso avoids Compose's older transitive dependency failing on API 37; ADR-012 |
 | Android SDK | min 26, compile/target 36; Build Tools 35.0.0 | Practical phone baseline; supported by selected AGP |
 

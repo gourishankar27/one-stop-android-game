@@ -25,16 +25,21 @@ from one_job.protocol.messages import (
     SessionAcceptedPayload,
     error_payload,
 )
+from one_job.protocol.role_messages import (
+    BriefingReadyPayload,
+    PlayerActionPayload,
+    RoleAssignedPayload,
+    RoleStatePayload,
+)
 
 MAX_FRAME_BYTES = 16 * 1024
 ReservedType = Literal[
-    "briefing_ready",
-    "player_action",
     "play_again",
     "return_to_lobby",
     "join_display",
 ]
 RESERVED_TYPES = frozenset(get_args(ReservedType))
+ROUND_TYPES = frozenset({"briefing_ready", "player_action"})
 LOBBY_TYPES = frozenset(
     {
         "create_room",
@@ -118,6 +123,20 @@ class RequestStateEnvelope(DTO):
     payload: EmptyPayload
 
 
+class BriefingReadyEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["briefing_ready"]
+    request_id: RequestId
+    payload: BriefingReadyPayload
+
+
+class PlayerActionEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["player_action"]
+    request_id: RequestId
+    payload: PlayerActionPayload
+
+
 type LobbyMessage = (
     CreateRoomEnvelope
     | JoinRoomEnvelope
@@ -128,7 +147,8 @@ type LobbyMessage = (
     | RequestStateEnvelope
 )
 type ClientMessage = Annotated[
-    PingEnvelope | ReservedEnvelope | LobbyMessage, Field(discriminator="type")
+    PingEnvelope | ReservedEnvelope | LobbyMessage | BriefingReadyEnvelope | PlayerActionEnvelope,
+    Field(discriminator="type"),
 ]
 
 
@@ -189,13 +209,31 @@ class PublicStateEnvelope(DTO):
     payload: PublicStatePayload
 
 
+class RoleAssignedEnvelope(DTO):
+    version: Literal[1] = 1
+    type: Literal["role_assigned"] = "role_assigned"
+    reply_to: RequestId | None
+    room_revision: NonnegativeInt
+    payload: RoleAssignedPayload = Field(repr=False)
+
+
+class RoleStateEnvelope(DTO):
+    version: Literal[1] = 1
+    type: Literal["role_state"] = "role_state"
+    reply_to: RequestId | None
+    room_revision: NonnegativeInt
+    payload: RoleStatePayload = Field(repr=False)
+
+
 ServerMessage = Annotated[
     PongEnvelope
     | ErrorEnvelope
     | PublicStateEnvelope
     | SessionAcceptedEnvelope
     | AckEnvelope
-    | LobbyStateEnvelope,
+    | LobbyStateEnvelope
+    | RoleAssignedEnvelope
+    | RoleStateEnvelope,
     Field(discriminator="type"),
 ]
 
@@ -267,7 +305,10 @@ def parse_text(text: str) -> ClientMessage:
         raise FrameError(ErrorCode.INVALID_MESSAGE, request_id) from None
     operation = (
         header.type
-        if header.type == "ping" or header.type in RESERVED_TYPES or header.type in LOBBY_TYPES
+        if header.type == "ping"
+        or header.type in RESERVED_TYPES
+        or header.type in LOBBY_TYPES
+        or header.type in ROUND_TYPES
         else None
     )
     if header.version != 1:

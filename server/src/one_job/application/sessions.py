@@ -17,6 +17,7 @@ from one_job.protocol.envelopes import (
     ErrorEnvelope,
     LobbyStateEnvelope,
     PongEnvelope,
+    RoleStateEnvelope,
     ServerMessage,
 )
 
@@ -61,7 +62,12 @@ class AdmissionReceipt:
 
 
 type ReplayReply = (
-    AckEnvelope | ErrorEnvelope | LobbyStateEnvelope | PongEnvelope | AdmissionReceipt
+    AckEnvelope
+    | ErrorEnvelope
+    | LobbyStateEnvelope
+    | RoleStateEnvelope
+    | PongEnvelope
+    | AdmissionReceipt
 )
 
 

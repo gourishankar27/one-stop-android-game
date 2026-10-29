@@ -16,8 +16,13 @@ adds typed `/ws` ping/pong/errors, bounded connection cleanup and a fixture engi
 adapter. Phase 04 adds authoritative rooms/lobbies, admission/resume credentials,
 readiness, host transfer and expiry. Phase 05 adds the Android shell, local
 Create/Join drafts and explicit future-screen previews with retained input state.
-Android networking, live socket gameplay, seeded assignment,
-emergencies, remaining controls and gameplay screens are planned.
+Phase 06 adds typed Android WebSocket requests, private session state, bounded
+resume/snapshot recovery and an opt-in development connection check.
+Phase 07 binds name/code forms and the authoritative roster, host/ready/start/
+leave feedback to that repository. Phase 08 adds seeded private station assignment,
+owned role instructions, acknowledgement, pause/timeout/abort and a held briefing.
+Live socket gameplay, emergencies, remaining controls and gameplay screens are
+planned. See [role-system evidence](docs/ROLE_SYSTEM_VALIDATION.md).
 See [the progress ledger](plans/plans.md) for validation gates and next work.
 
 ## Layout

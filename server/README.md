@@ -3,7 +3,8 @@
 Current functionality: independent `GET /health` and `/ws` ping/pong/typed errors.
 Phase 04 supports create/join/ready/leave/state, stable credentials, resume/fencing,
 disconnect grace, host transfer, idle expiry and bounded reply replay. Eligible
-start remains `feature_unavailable`; no room launches gameplay.
+start now enters a Phase 08 private role briefing. Acknowledged briefings hold
+without gameplay; disconnect pauses, while leave/grace/briefing timeout abort.
 The package uses a `src/` layout and Python 3.12+. Phase 01 also provides pure,
 immutable domain values with constructor validation; see the
 [model API and construction example](../docs/GAME_STATE.md#implemented-python-api).
@@ -11,7 +12,9 @@ Phase 02 adds a synchronous fixed-step engine for power, lanes, coolant,
 heat/damage and victory/defeat timing. It has no emergency scheduler,
 live WebSocket gameplay or full control catalog yet. Phase 03 adds strict v1
 DTOs, a bounded connection supervisor, redacted logs and a fixture-only engine
-adapter. See the [implemented protocol subset](../docs/NETWORK_PROTOCOL.md#implemented-phase-04-subset).
+adapter. Phase 08 adds pure seeded assignment, metadata, authenticated ownership
+and allowlisted owned-station projections. See the
+[implemented protocol subset](../docs/NETWORK_PROTOCOL.md#implemented-phase-08-subset).
 
 From this directory:
 
@@ -65,16 +68,23 @@ With the local server running, use a second terminal:
 ```bash
 uv run python examples/websocket_smoke.py
 uv run python examples/lobby_smoke.py
+uv run python examples/role_smoke.py
 uv run pytest tests/protocol tests/api tests/application
 ```
 
 The client checks health, correlated pong, unavailable/unknown operations and
 documented invalid JSON/version closes. The lobby client uses three sockets to
-check admission, readiness, unavailable start, leave, disconnect/resume, matching
+check admission, readiness, rejected non-host start, leave, disconnect/resume, matching
 revisions and host transfer without printing credentials. Unadmitted sockets
 expire after ten seconds; admission cancels that deadline. Lifecycle logs contain only allowlisted
 metadata; never enable raw WebSocket debug logs with real credentials. Current
-results and limitations: [LOBBY_VALIDATION.md](../docs/LOBBY_VALIDATION.md).
+room evidence: [LOBBY_VALIDATION.md](../docs/LOBBY_VALIDATION.md). The role client
+starts separate two-/three-controller rounds, checks captured frame field
+allowlists and owned-only station keys/metadata, rejects wrong-role actions,
+acknowledges everyone and verifies held tick zero before leaving. It is bounded
+to 20 seconds and optionally writes only sanitized field-name evidence with
+`--proof ../artifacts/phase08/privacy-proof.json`; never save raw private frames.
+Current role results: [ROLE_SYSTEM_VALIDATION.md](../docs/ROLE_SYSTEM_VALIDATION.md).
 
 For real-phone development later, bind to a reachable private address and use
 the debug transport configuration introduced in Phase 06. Phase 00 has no

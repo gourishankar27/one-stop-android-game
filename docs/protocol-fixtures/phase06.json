@@ -1,0 +1,18 @@
+[
+  {
+    "request": {"version": 1, "type": "join_room", "request_id": "join-6", "payload": {"room_code": "ABCD23", "name": "Crew 🚀"}},
+    "response": {"version": 1, "type": "session_accepted", "reply_to": "join-6", "room_revision": 2, "payload": {"room_code": "ABCD23", "kind": "player", "player_id": "00000000-0000-0000-0000-000000000002", "resume_token": "<synthetic-token>"}}
+  },
+  {
+    "request": {"version": 1, "type": "resume_session", "request_id": "resume-6", "payload": {"resume_token": "<synthetic-token>"}},
+    "response": {"version": 1, "type": "session_accepted", "reply_to": "resume-6", "room_revision": 4, "payload": {"room_code": "ABCD23", "kind": "player", "player_id": "00000000-0000-0000-0000-000000000002", "resume_token": "<synthetic-token>"}}
+  },
+  {
+    "request": {"version": 1, "type": "leave_room", "request_id": "leave-6", "payload": {}},
+    "response": {"version": 1, "type": "ack", "reply_to": "leave-6", "room_revision": 5, "payload": {"operation": "leave_room"}}
+  },
+  {
+    "request": {"version": 1, "type": "resume_session", "request_id": "expired-6", "payload": {"resume_token": "<expired-synthetic-token>"}},
+    "response": {"version": 1, "type": "error", "reply_to": "expired-6", "room_revision": null, "payload": {"code": "session_expired", "message": "The session expired; create or join a room again.", "retryable": false}}
+  }
+]

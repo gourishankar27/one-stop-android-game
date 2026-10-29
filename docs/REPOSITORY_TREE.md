@@ -20,6 +20,16 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
                 - `game/`
                   - `FoundationHomeTest.kt`
                   - `ShellNavigationTest.kt`
+                  - `ConnectionFeedbackTest.kt`
+                  - `LiveServerNetworkingTest.kt`
+                  - `LobbyUiTest.kt`
+                  - `RoleUiTest.kt`
+        - `debug/`
+          - `AndroidManifest.xml`
+          - `java/com/onejob/game/app/DebugConnectionPanel.kt`
+          - `res/xml/debug_network_security_config.xml`
+        - `release/`
+          - `java/com/onejob/game/app/DebugConnectionPanel.kt`
         - `main/`
           - `AndroidManifest.xml`
           - `java/`
@@ -32,14 +42,35 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
                     - `OneJobApplication.kt`
                   - `data/`
                     - `GameRepository.kt`
+                    - `network/`
+                      - `Endpoint.kt`
+                      - `SocketDataSource.kt`
+                    - `protocol/`
+                      - `Messages.kt`
+                      - `RoleMessages.kt`
+                      - `StrictPrimitives.kt`
+                      - `ProtocolCodec.kt`
+                    - `repository/`
+                      - `RepositoryModels.kt`
+                      - `SocketGameRepository.kt`
                   - `navigation/`
                     - `AppDestination.kt`
                   - `ui/`
                     - `ShellScreens.kt`
+                    - `connection/`
+                      - `ConnectionCheckViewModel.kt`
+                      - `ConnectionFeedback.kt`
+                    - `lobby/`
+                      - `LobbyFeedback.kt`
+                      - `LobbyViewModel.kt`
+                      - `LobbyScreen.kt`
                     - `forms/`
                       - `DraftValidation.kt`
                       - `RoomFormScreen.kt`
                       - `RoomFormViewModel.kt`
+                    - `roles/`
+                      - `RoleScreen.kt`
+                      - `RoleViewModel.kt`
                     - `theme/`
                       - `Theme.kt`
           - `res/`
@@ -48,9 +79,20 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
         - `test/`
           - `java/com/onejob/game/`
             - `MainDispatcherRule.kt`
+            - `LobbyTestRepository.kt`
+            - `data/`
+              - `EndpointTest.kt`
+              - `ProtocolCodecTest.kt`
+              - `RoleCodecTest.kt`
+              - `SocketGameRepositoryTest.kt`
             - `ui/forms/`
               - `DraftValidationTest.kt`
               - `RoomFormViewModelTest.kt`
+              - `AdmissionViewModelTest.kt`
+            - `ui/lobby/`
+              - `LobbyViewModelTest.kt`
+            - `ui/roles/`
+              - `RoleViewModelTest.kt`
     - `build.gradle.kts`
     - `gradle.properties`
     - `gradle/`
@@ -72,9 +114,14 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
     - `SERVER_FOUNDATION_VALIDATION.md`
     - `LOBBY_VALIDATION.md`
     - `ANDROID_FOUNDATION_VALIDATION.md`
+    - `ANDROID_NETWORKING_VALIDATION.md`
+    - `LOBBY_UI_VALIDATION.md`
+    - `ROLE_SYSTEM_VALIDATION.md`
     - `protocol-fixtures/`
       - `phase03.json`
       - `phase04.json`
+      - `phase06.json`
+      - `phase08.json`
     - `GAME_DESIGN.md`
     - `GAME_STATE.md`
     - `NETWORK_PROTOCOL.md`
@@ -117,6 +164,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
       - `engine_round.py`
       - `websocket_smoke.py`
       - `lobby_smoke.py`
+      - `role_smoke.py`
     - `src/`
       - `one_job/`
         - `__init__.py`
@@ -130,8 +178,10 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
           - `engine_adapter.py`
           - `limits.py`
           - `outbox.py`
+          - `projections.py`
           - `rooms.py`
           - `room_service.py`
+          - `round_service.py`
           - `sessions.py`
           - `timing.py`
         - `protocol/`
@@ -139,6 +189,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
           - `envelopes.py`
           - `mapping.py`
           - `messages.py`
+          - `role_messages.py`
         - `main.py`
         - `py.typed`
         - `domain/`
@@ -149,6 +200,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
           - `engine.py`
           - `models.py`
           - `rules.py`
+          - `roles.py`
           - `types.py`
     - `tests/`
       - `__init__.py`
@@ -159,6 +211,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
         - `test_lobby.py`
         - `test_websocket.py`
       - `application/`
+        - `test_briefing_rounds.py`
         - `test_connections.py`
         - `test_engine_adapter.py`
         - `test_outbox.py`
@@ -166,6 +219,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
       - `protocol/`
         - `test_envelopes.py`
         - `test_lobby_messages.py`
+        - `test_role_messages.py`
       - `domain/`
         - `conftest.py`
         - `test_actions.py`
@@ -175,6 +229,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
         - `test_engine_replay.py`
         - `test_isolation.py`
         - `test_models.py`
+        - `test_roles.py`
         - `test_rounds.py`
       - `fixtures/`
         - `engine/`

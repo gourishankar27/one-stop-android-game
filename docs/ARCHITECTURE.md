@@ -46,7 +46,19 @@ Normalized command hashes and terminal replies are bounded to 128/30 seconds.
 Generation checks precede replay/mutation, including stale disconnect callbacks.
 Targeted admission/ack replies are queued before changed snapshots. Lobby snapshots
 coalesce only with the same room/type, preserving correlated/critical replies.
-Start eligibility is reusable but no room calls the game engine in this phase.
+Start eligibility is reusable; Phase 04 itself did not construct a game engine.
+
+Phase 08 adds a synchronous `RoundService` inside that same room owner, not a
+second task. The eligible host command freezes config/participants and passes a
+seeded role assignment and copied RNG state to the engine. Immutable station
+metadata remains in `domain/roles.py`; `application/projections.py` constructs
+allowlisted owned DTOs. Public role state contains only common round fields;
+exact station values and instructions are targeted, including for the host.
+The existing mailbox deadline handles the 60-second acknowledgement budget and
+suspends it during disconnect grace. All acknowledgements hold in briefing with
+no engine start/ticks; leave, grace expiry and briefing timeout abort. Full
+private state requests/replays are scoped to a single authenticated membership.
+See [ADR-017](DECISIONS.md#adr-017--private-briefing-rounds-held-before-gameplay).
 
 `application/engine_adapter.py` accepts an explicit engine fixture and `TickSource`.
 It maps three existing typed action DTOs into domain values, typed domain rejection
@@ -55,8 +67,9 @@ The baseline has no emergencies, so public warnings are empty. It creates no
 tasks, and its awaited `step()` advances exactly one domain tick after a supplied
 tick signal. `FixedStepTicker` is pull-driven with injected 100ms deadlines.
 The socket never calls this adapter; future room ownership will orchestrate it.
-Full station projections, live ticking/catch-up policy and event dispatch remain
-later phases. The current public-state DTO prepares coalescing tests, not observer
+Owned station projections are implemented for briefing in Phase 08; live
+ticking/catch-up policy and event dispatch remain later phases. The current
+public-state DTO prepares coalescing tests, not observer
 admission or public broadcasts.
 
 ```mermaid
@@ -78,9 +91,9 @@ network layer never hands a raw engine object to a client.
 
 | Boundary | Owns | Must not own |
 | --- | --- | --- |
-| `one_job/domain/` (Phases 01–02) | Dataclasses, rules, actions, deterministic ticks | Pydantic, asyncio, clocks, sockets, logging secrets |
-| `one_job/protocol/` (03) | Pydantic discriminated DTO unions and mapping | Mutable room/game state |
-| `one_job/application/` (03–04) | Connections, rooms, session credentials, commands, projections, scheduler | Rules duplicated from the engine |
+| `one_job/domain/` (01–02, 08) | Dataclasses, rules, actions, deterministic ticks, seeded roles/metadata | Pydantic, asyncio, clocks, sockets, logging secrets |
+| `one_job/protocol/` (03–04, 08) | Pydantic discriminated DTO unions and mapping | Mutable room/game state |
+| `one_job/application/` (03–04, 08) | Connections, rooms, session credentials, commands, projections, scheduler | Rules duplicated from the engine |
 | `one_job/api/` | Thin HTTP/WS routing and error translation | Ship calculations or role permissions implemented ad hoc |
 | `one_job/main.py` | Dependency assembly and lifespan | Per-round business logic |
 
@@ -135,31 +148,43 @@ stations' detailed warnings or target instructions to shared messages.
 ## Android
 
 Phase 05 uses `MainActivity` as the single host. `app/OneJobApplication.kt` owns
-a small constructor-injected `AppContainer`, whose current repository is
-`data/UnavailableGameRepository`. `GameRepository` exposes immutable connection
-`StateFlow` only; no socket/data source or create/join command exists yet.
-Phase 06 will extend this boundary with typed authoritative session snapshots
-and a socket-owning data source. There is no Android engine or ship simulation.
+a small constructor-injected `AppContainer`. Phase 06 installs one application-owned
+`SocketGameRepository`, exposing immutable connection/session StateFlows and typed
+command results. `OkHttpSocketDataSource` owns one active socket and bounded I/O;
+`ProtocolCodec` handles the typed serialization boundary. A bounded coroutine
+owner serializes all credentials, pending requests, deadlines, revision filtering
+and resume decisions; callbacks carry generation IDs. Rotation retains that owner;
+owner closure cancels and closes it. There is no Android engine or ship simulation.
 
 `app/OneJobApp.kt` assembles a Navigation Compose graph using the explicit
 `navigation/AppDestination` enum. Routes contain no parameters or credentials.
-Home opens local Create/Join drafts or clearly labelled future-screen previews;
+Home opens Create/Join forms or clearly labelled future-screen previews;
 navigation alone never grants membership. `ui/ShellScreens.kt` provides stateless
 scrolling/inset-aware pages under the existing `ui/theme` Material 3 theme.
 
 `ui/forms/RoomFormViewModel` receives repository, form kind and SavedStateHandle
 through an ordinary navigation-entry factory. Immutable UI StateFlow combines
 typed nonsecret draft inputs with repository connection status. Intents only edit
-or check local drafts. `DraftValidation` provides presentation hints (including
+or submit validated inputs. `DraftValidation` provides presentation hints (including
 Unicode character counting/ASCII code hints); server validation remains authority.
 Compose collects with `collectAsStateWithLifecycle`. Only draft name/code/check
 state is saved; connection status is read anew from the repository. A popped entry
-discards its draft. No dependency-injection framework/use-case layer is needed.
+discards its inputs and closes the attempt. Rejected replies retain inputs;
+uncertain admission requires explicit reset rather than automatic replay.
+No dependency-injection framework/use-case layer is needed.
+
+Phase 07's shared `LobbyViewModel` maps allowlisted snapshots into ID-keyed member
+presentation, local ready intent and server-hinted host start. It retains only
+presentation membership during recovery; cached rosters are not retained. The
+repository identity gates admission navigation; expiry/leave returns Home. Both
+Back controls require leave confirmation. Feature-unavailable start remains in
+Lobby. Coroutine result epochs prevent an older command from replacing leave
+feedback. See ADR-016; no server or wire behavior changed.
 
 Use one Activity. Compose screens consume immutable UI state and emit intents.
 ViewModels transform repository state using coroutines and StateFlow.
-The future repository owns the current session and typed server snapshots; a WebSocket
-data source owns one socket, serialization and bounded I/O. Use lifecycle-aware
+The repository owns the current session and typed server snapshots; a WebSocket
+data source owns one socket and bounded I/O. Use lifecycle-aware
 collection; cancel work when its owner ends. Use manual app-level dependency
 assembly initially, not global mutable singleton screens or a DI framework.
 
@@ -169,11 +194,19 @@ Interpolation may smooth an animation, but must not decrement authoritative hull
 invent emergency resolution or declare victory. A displayed interpolated timer
 must re-anchor to server values and stop while paused/disconnected.
 
-OkHttp WebSocket plus kotlinx.serialization is the planned Phase 06 transport.
-Add those dependencies only then. Store credentials only in private session
+OkHttp WebSocket plus kotlinx.serialization implement the Phase 06 transport.
+The retained debug-only connection panel emits ViewModel intents for transport
+checks; Phase 07 Home instead uses the real forms. Store credentials only in private session
 storage; never save them to UI state restoration bundles, logs, deep links or URLs.
 
 ## Room host, connections and deployment
+
+Phase 08 Android `RoleViewModel` derives owned instructions/read selections from
+matched repository assignment/state. It clears private presentation on recovery
+and waits for the correlated full private snapshot. Each owned station must be
+explicitly read before acknowledgement; server confirmation controls hold.
+Navigation follows briefing/pause/abort stage and never enters gameplay locally.
+No role/private snapshot or credential is saved in restored UI state.
 
 The host is the creator's player ID. All players must be connected and ready,
 with exactly 2 or 3 controllers, before start. Host checks occur on the server.

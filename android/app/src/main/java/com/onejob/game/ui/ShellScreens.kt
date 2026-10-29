@@ -22,9 +22,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import com.onejob.game.R
 import com.onejob.game.navigation.AppDestination
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun ShellPage(
     @StringRes title: Int,
@@ -33,7 +36,7 @@ fun ShellPage(
 ) {
     Scaffold { insets ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(insets).imePadding()
+            modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }.padding(insets).imePadding()
                 .verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -52,11 +55,15 @@ fun ShellPage(
 }
 
 @Composable
-fun ShellHome(onNavigate: (AppDestination) -> Unit) {
+fun ShellHome(
+    feedbackContent: @Composable () -> Unit = {},
+    onNavigate: (AppDestination) -> Unit,
+) {
     ShellPage(R.string.home_title) {
         Text(stringResource(R.string.home_tagline), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.foundation_status), style = MaterialTheme.typography.titleLarge)
         Text(stringResource(R.string.foundation_description))
+        feedbackContent()
         Button(onClick = { onNavigate(AppDestination.CREATE) }, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.create_setup))
         }
@@ -65,8 +72,6 @@ fun ShellHome(onNavigate: (AppDestination) -> Unit) {
         }
         Text(stringResource(R.string.explore_previews), style = MaterialTheme.typography.titleMedium)
         for ((destination, label) in listOf(
-            AppDestination.LOBBY to R.string.preview_lobby,
-            AppDestination.ROLE to R.string.preview_role,
             AppDestination.GAMEPLAY to R.string.preview_gameplay,
             AppDestination.RESULTS to R.string.preview_results,
         )) {

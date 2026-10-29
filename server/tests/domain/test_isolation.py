@@ -6,12 +6,16 @@ import textwrap
 def test_domain_import_is_independent_of_transport_and_environment_configuration() -> None:
     code = textwrap.dedent("""\
         import sys
+        from random import Random
         from uuid import UUID
         from one_job.domain import GameConfig, GameEngine, Player, PlayerId, RoleAssignment, Role
         from one_job.domain.types import RoundId
+        from one_job.domain.roles import STATIONS, assign_roles
         config = GameConfig()
         ids = (PlayerId(UUID(int=1)), PlayerId(UUID(int=2)))
         players = (Player(ids[0], "A"), Player(ids[1], "B"))
+        assert set(assign_roles(players, Random(123)).owners) == set(Role)
+        assert set(STATIONS) == set(Role)
         roles = RoleAssignment(
             ids, {Role.PILOT: ids[0], Role.ENGINEER: ids[1], Role.SHIELDS: ids[1]}
         )

@@ -3,7 +3,7 @@
 Phase 01 implements immutable, validated Python domain values in
 `server/src/one_job/domain/`. Phase 02 adds the synchronous baseline engine
 described below. Phase 04 implements application room membership/lobby projections;
-gameplay station projections remain later work. Wire field
+Phase 08 adds seeded ownership and allowlisted private briefing projections. Wire field
 names live in
 NETWORK_PROTOCOL.md; internal snapshots are not serialization contracts.
 
@@ -15,7 +15,7 @@ NETWORK_PROTOCOL.md; internal snapshots are not serialization contracts.
 | `Room` | Membership, host ID, room revision, current session; application layer |
 | `Role` | Station: `pilot`, `engineer`, `shields` |
 | `RoleAssignment` | Frozen participant IDs plus a copied, read-only `Role → PlayerId` mapping; exactly one owner per station |
-| `GameSession` | Planned application context grouping round/config/engine/participants; not implemented |
+| `RoundService` | Phase 08 synchronous application context grouping round/config/seed/engine/frozen participants and briefing acknowledgement; existing room task owns it |
 | `GameEngine` | Phase 02 single-owner synchronous baseline: start, three actions, heat/damage, cooldowns, fixed ticks and terminal results |
 | `GameState` | Frozen internal snapshot of config, participants, assignments, ship, round and active emergencies |
 | `ShipSystem` | Conceptual subsystem; do not require a base class in Phase 01 |
@@ -218,13 +218,51 @@ start raise `ValueError` without mutation. There is no delta-time API.
 Only temperature/hull evolve continuously in Phase 02. Shield resources and flags
 retain their configured initial values; an existing configured power reservation
 still constrains output changes. Evade, boosts, shield controls/passive dynamics,
-shutdown and emergencies are not simulated. The RNG is seeded but never drawn,
-so changing only the seed has no observable gameplay effect yet.
+shutdown and emergencies are not simulated. The baseline tick rules do not draw
+randomness. Phase 08 role assignment draws before engine construction; changing
+only the seed still has no effect on these heat/hull rules.
 
 Snapshots, action traces and engine events are internal data, not public/player
-projections. Never serialize or broadcast these full objects. Phase 03 will adapt
-this API; room ownership, projection privacy and live running orchestration are
-implemented in their selected later phases.
+projections. Never serialize or broadcast these full objects. Phase 03 adapts
+this API; Phase 08 implements private briefing projections. Live running
+orchestration remains later work.
+
+## Phase 08 role and briefing API
+
+`domain.roles.assign_roles(players, rng)` validates a join-ordered frozen roster
+of two or three unique `Player`s before drawing. It shuffles a copy of player IDs
+with the supplied `random.Random`: first gets Pilot, second Engineer, third
+Shields; with two players the second gets Engineer+Shields. The resulting
+`RoleAssignment.player_ids` preserves join order. `StationMetadata` is a frozen
+role/title/steps value and `STATIONS` is an immutable mapping separate from ship
+rules. Metadata has one to four short, nonblank instructions.
+
+`application.round_service.RoundService` is synchronously owned by the existing
+room mailbox. An eligible host start freezes config/roster, creates a round UUID
+and seed, performs assignment and gives the engine a private copy of the RNG's
+post-assignment state. No engine start or tick is called in Phase 08.
+`GameEngine.authorize_action(actor_id, action)` checks all nine action shapes and
+station ownership without mutation. The authenticated socket supplies actor ID;
+client role/player claims are forbidden. `pause()`, `resume()` and
+`abort(ResultReason)` preserve tick zero and immutable snapshots; abort retains
+the original participant names/IDs in its public result.
+
+`application.projections.assigned_view` returns only the recipient's role names
+and metadata. `player_view` returns the common `PublicRoundView`, only that
+participant's typed station views and `BriefingStatus`; it never returns an
+internal snapshot, seed, ownership table or another station's exact values.
+The two-station participant receives exactly Engineer and Shields. Host status
+does not change projection access. See [the wire contract](NETWORK_PROTOCOL.md).
+
+The application tracks acknowledgement by frozen player ID, not by current host
+or phone-selected tab. It accepts `briefing_ready(round_id)` for all owned roles;
+Android requires an explicit read confirmation on each owned station first.
+The acknowledgement budget starts at 60 seconds and freezes during disconnect
+grace. It resumes only when every original participant is connected. All ready
+means a held briefing with no deadline; time, countdown and simulation remain
+unchanged. Explicit leave, expired grace and expired briefing abort visibly with
+`player_left`, `disconnect_timeout` and `briefing_timeout` respectively. The
+in-memory round is retained until members leave; rematch/return is Phase 11.
 
 ## Authoritative ship model
 

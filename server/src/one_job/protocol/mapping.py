@@ -1,20 +1,37 @@
 """Explicit transport/domain mappings; internal snapshots are never serialized."""
 
-from one_job.domain.actions import Coolant, MoveLane, SetEnginePower
+from one_job.domain.actions import (
+    Coolant,
+    EmergencyShutdown,
+    EngineBoost,
+    Evade,
+    MoveLane,
+    PlayerAction,
+    RechargeShield,
+    SetEnginePower,
+    SetShield,
+    ShieldBoost,
+)
 from one_job.domain.config import RESOURCE_MAX
-from one_job.domain.engine import ActionCode, EngineAction
+from one_job.domain.engine import ActionCode
 from one_job.domain.models import GameState
-from one_job.domain.types import MoveDirection
+from one_job.domain.types import MoveDirection, ShieldFacing
 from one_job.protocol.messages import (
     ActionInput,
     CoolantInput,
+    EmergencyShutdownInput,
+    EngineBoostInput,
     ErrorCode,
     ErrorPayload,
+    EvadeInput,
     MoveLaneInput,
     PlayerSummary,
     PublicRoundView,
+    RechargeShieldInput,
     ResultView,
     SetEnginePowerInput,
+    SetShieldInput,
+    ShieldBoostInput,
     error_payload,
 )
 
@@ -30,13 +47,25 @@ ACTION_ERRORS: dict[ActionCode, ErrorCode] = {
 }
 
 
-def domain_action(action: ActionInput) -> EngineAction:
+def domain_action(action: ActionInput) -> PlayerAction:
     if isinstance(action, SetEnginePowerInput):
         return SetEnginePower(action.value)
     if isinstance(action, MoveLaneInput):
         return MoveLane(MoveDirection(action.direction))
     if isinstance(action, CoolantInput):
         return Coolant()
+    if isinstance(action, EvadeInput):
+        return Evade()
+    if isinstance(action, EngineBoostInput):
+        return EngineBoost()
+    if isinstance(action, EmergencyShutdownInput):
+        return EmergencyShutdown()
+    if isinstance(action, SetShieldInput):
+        return SetShield(action.active, ShieldFacing(action.facing))
+    if isinstance(action, RechargeShieldInput):
+        return RechargeShield()
+    if isinstance(action, ShieldBoostInput):
+        return ShieldBoost()
     raise ValueError("unsupported typed action")
 
 

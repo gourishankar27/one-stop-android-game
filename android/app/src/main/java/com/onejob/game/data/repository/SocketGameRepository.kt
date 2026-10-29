@@ -1,0 +1,541 @@
+package com.onejob.game.data.repository
+
+import com.onejob.game.data.ConnectionStatus
+import com.onejob.game.data.GameRepository
+import com.onejob.game.data.network.Endpoint
+import com.onejob.game.data.network.EndpointProvider
+import com.onejob.game.data.network.EndpointResult
+import com.onejob.game.data.network.SocketDataSource
+import com.onejob.game.data.network.SocketEvent
+import com.onejob.game.data.network.SocketSession
+import com.onejob.game.data.network.TransportFailure
+import com.onejob.game.data.network.TransportProblem
+import com.onejob.game.data.protocol.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.util.Locale
+import java.util.UUID
+
+/** All mutable session/request state belongs to this coroutine owner, never a socket callback. */
+class SocketGameRepository(
+    private val endpointProvider: EndpointProvider,
+    private val source: SocketDataSource,
+    parentScope: CoroutineScope,
+    private val now: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val newId: () -> String = { UUID.randomUUID().toString() },
+) : GameRepository {
+    private enum class Purpose { PUBLIC, HEARTBEAT, RESUME, SYNC, LEAVE }
+    private sealed interface Event {
+        class Connect(val result: CompletableDeferred<CommandResult>) : Event
+        class Request(val message: ClientMessage, val result: CompletableDeferred<CommandResult>) : Event
+        class Leave(val result: CompletableDeferred<CommandResult>) : Event
+        class Disconnect(val result: CompletableDeferred<CommandResult>) : Event
+        data class Incoming(val generation: Long, val event: SocketEvent) : Event
+        data class Lost(val generation: Long, val problem: TransportProblem) : Event
+        data class OpenTimeout(val generation: Long) : Event
+        data class Timeout(val generation: Long, val id: String) : Event
+        data class Heartbeat(val generation: Long) : Event
+        data class Retry(val epoch: Long) : Event
+        data class RecoveryExpired(val epoch: Long) : Event
+        data class CancelRequest(val id: String) : Event
+    }
+    private class Pending(
+        val operation: Operation, val purpose: Purpose, val timer: Job,
+        val result: CompletableDeferred<CommandResult>?, val nonce: String? = null,
+        val actionSequence: Long? = null,
+    )
+
+    private val owner = SupervisorJob(parentScope.coroutineContext[Job])
+    private val scope = CoroutineScope(parentScope.coroutineContext + owner)
+    private val events = Channel<Event>(64)
+    private val codec = ProtocolCodec()
+    private val credentials = MemoryCredentialStore()
+    private val revisions = RevisionGate()
+    private val pending = mutableMapOf<String, Pending>()
+    private val _connection = MutableStateFlow(ConnectionState())
+    private val _status = MutableStateFlow(ConnectionStatus.DISCONNECTED)
+    private val _session = MutableStateFlow(SessionState())
+    override val connection = _connection.asStateFlow()
+    override val connectionStatus = _status.asStateFlow()
+    override val session = _session.asStateFlow()
+    private var generation = 0L
+    private var endpoint: Endpoint? = null
+    private var socket: SocketSession? = null
+    private var opened = false
+    private var reader: Job? = null
+    private var openTimer: Job? = null
+    private var heartbeat: Job? = null
+    private var retry: Job? = null
+    private var recoveryTimer: Job? = null
+    private var recoveryDeadline: Long? = null
+    private var recoveryEpoch = 0L
+    private var retryAttempt = 0
+    private var syncId: String? = null
+    private var connectReply: CompletableDeferred<CommandResult>? = null
+
+    private val worker = scope.launch {
+        try {
+            for (event in events) {
+                when (event) {
+                    is Event.Connect -> onConnect(event.result)
+                    is Event.Request -> onRequest(event.message, event.result)
+                    is Event.Leave -> onLeave(event.result)
+                    is Event.Disconnect -> {
+                        resetMembership()
+                        stopTransport()
+                        failPending()
+                        state(ConnectionStatus.DISCONNECTED)
+                        event.result.complete(CommandResult.LeftLocally)
+                    }
+                    is Event.Incoming -> if (event.generation == generation) incoming(event.event)
+                    is Event.Lost -> if (event.generation == generation) {
+                        if (event.problem == TransportProblem.OVERSIZE) protocolFailure(ProtocolIssue.OVERSIZE)
+                        else lost(if (event.problem == TransportProblem.BACKPRESSURE) ConnectionProblem.BACKPRESSURE else ConnectionProblem.NETWORK)
+                    }
+                    is Event.OpenTimeout -> if (event.generation == generation && !opened) lost(ConnectionProblem.NETWORK)
+                    is Event.Timeout -> if (event.generation == generation) timedOut(event.id)
+                    is Event.Heartbeat -> if (event.generation == generation && opened) {
+                        send(ClientMessage.Ping(newId(), NoncePayload(newId())), Purpose.HEARTBEAT)
+                    }
+                    is Event.Retry -> if (event.epoch == recoveryEpoch && recoveryDeadline != null) {
+                        if (now() >= recoveryDeadline!!) expire() else openSocket()
+                    }
+                    is Event.RecoveryExpired -> if (event.epoch == recoveryEpoch && recoveryDeadline != null) expire()
+                    is Event.CancelRequest -> pending.remove(event.id)?.timer?.cancel()
+                }
+            }
+        } finally {
+            stopTransport()
+            failPending()
+            resetMembership()
+            state(ConnectionStatus.DISCONNECTED)
+            source.close()
+            events.close()
+            while (true) {
+                val abandoned = events.tryReceive().getOrNull() ?: break
+                val result = when (abandoned) {
+                    is Event.Connect -> abandoned.result
+                    is Event.Request -> abandoned.result
+                    is Event.Leave -> abandoned.result
+                    is Event.Disconnect -> abandoned.result
+                    else -> null
+                }
+                result?.complete(CommandResult.NotSent(ConnectionProblem.NETWORK))
+            }
+            owner.cancel()
+        }
+    }
+
+    override suspend fun connect(): CommandResult = ask { Event.Connect(it) }
+    override suspend fun ping(): CommandResult = connectedRequest { ClientMessage.Ping(it, NoncePayload(newId())) }
+    override suspend fun create(name: String): CommandResult = connectedRequest { ClientMessage.Create(it, NamePayload(name.trim())) }
+    override suspend fun join(roomCode: String, name: String): CommandResult = connectedRequest {
+        ClientMessage.Join(it, JoinPayload(roomCode.trim().uppercase(Locale.ROOT), name.trim()))
+    }
+    override suspend fun setReady(ready: Boolean): CommandResult = request { ClientMessage.Ready(it, ReadyPayload(ready)) }
+    override suspend fun start(): CommandResult = request { ClientMessage.Start(it) }
+    override suspend fun requestState(): CommandResult = request { ClientMessage.State(it) }
+    override suspend fun acknowledgeBriefing(roundId: String): CommandResult = request {
+        ClientMessage.Briefing(it, RoundPayload(roundId))
+    }
+    override suspend fun submitAction(roundId: String, sequence: Long, action: PlayerAction): CommandResult = request {
+        ClientMessage.Action(it, ActionPayload(roundId, sequence, action))
+    }
+    override suspend fun leave(): CommandResult = ask { Event.Leave(it) }
+    override suspend fun disconnect(): CommandResult = ask { Event.Disconnect(it) }
+    override fun close() { owner.cancel() }
+    suspend fun closeAndJoin() { close(); worker.join() }
+
+    private suspend fun connectedRequest(factory: (String) -> ClientMessage): CommandResult {
+        val connected = connect()
+        return if (connected is CommandResult.Accepted) request(factory) else connected
+    }
+    private suspend fun request(factory: (String) -> ClientMessage): CommandResult {
+        val message = factory(newId())
+        return try {
+            ask { Event.Request(message, it) }
+        } catch (cancelled: CancellationException) {
+            events.trySend(Event.CancelRequest(message.request_id))
+            throw cancelled
+        }
+    }
+    private suspend fun ask(factory: (CompletableDeferred<CommandResult>) -> Event): CommandResult {
+        if (!owner.isActive) return CommandResult.NotSent(ConnectionProblem.NETWORK)
+        val result = CompletableDeferred<CommandResult>()
+        if (!events.trySend(factory(result)).isSuccess) return CommandResult.NotSent(ConnectionProblem.BACKPRESSURE)
+        return try { result.await() } catch (cancelled: CancellationException) { result.cancel(); throw cancelled }
+    }
+
+    private fun state(status: ConnectionStatus, problem: ConnectionProblem? = null) {
+        _connection.value = ConnectionState(status, problem, retryAttempt)
+        _status.value = status
+    }
+    private fun onConnect(result: CompletableDeferred<CommandResult>) {
+        if (result.isCancelled) return
+        if (opened && syncId == null && recoveryDeadline == null) {
+            result.complete(CommandResult.Accepted("connect", Operation.CONNECT))
+            return
+        }
+        if (socket != null || retry?.isActive == true || connectReply != null) {
+            result.complete(CommandResult.NotSent(ConnectionProblem.BACKPRESSURE))
+            return
+        }
+        if (recoveryDeadline != null && now() >= recoveryDeadline!!) {
+            expire()
+            result.complete(CommandResult.NotSent(ConnectionProblem.NETWORK))
+            return
+        }
+        connectReply = result
+        openSocket()
+    }
+
+    private fun openSocket() {
+        val configuration = endpointProvider.current()
+        if (configuration !is EndpointResult.Ready) {
+            connectReply?.complete(CommandResult.NotSent(ConnectionProblem.CONFIGURATION))
+            connectReply = null
+            resetMembership()
+            state(ConnectionStatus.UNAVAILABLE, ConnectionProblem.CONFIGURATION)
+            return
+        }
+        val credential = credentials.value
+        if (credential != null && !credential.endpoint.sameAs(configuration.endpoint)) resetMembership()
+        stopTransport()
+        endpoint = configuration.endpoint
+        val current = generation
+        state(if (credentials.value == null) ConnectionStatus.CONNECTING else ConnectionStatus.RECONNECTING)
+        val session = try { source.open(configuration.endpoint) } catch (_: Exception) {
+            lost(ConnectionProblem.NETWORK)
+            return
+        }
+        socket = session
+        reader = scope.launch {
+            try {
+                for (event in session.events) events.send(Event.Incoming(current, event))
+                events.send(Event.Lost(current, TransportProblem.NETWORK))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: TransportFailure) {
+                events.send(Event.Lost(current, failure.problem))
+            } catch (_: Exception) {
+                events.send(Event.Lost(current, TransportProblem.NETWORK))
+            }
+        }
+        openTimer = scope.launch { delay(5_000); events.send(Event.OpenTimeout(current)) }
+    }
+
+    private fun incoming(event: SocketEvent) {
+        when (event) {
+            SocketEvent.Open -> {
+                opened = true
+                openTimer?.cancel()
+                val current = generation
+                heartbeat = scope.launch {
+                    while (true) { delay(10_000); events.send(Event.Heartbeat(current)) }
+                }
+                val credential = credentials.value
+                if (credential == null) {
+                    state(ConnectionStatus.CONNECTED)
+                    connectReply?.complete(CommandResult.Accepted("connect", Operation.CONNECT))
+                    connectReply = null
+                } else send(ClientMessage.Resume(newId(), ResumePayload(credential.token)), Purpose.RESUME)
+            }
+            is SocketEvent.Text -> when (val decoded = codec.decode(event.text)) {
+                is DecodedFrame.Message -> message(decoded.message)
+                is DecodedFrame.Invalid -> protocolFailure(decoded.issue)
+            }
+            SocketEvent.Binary -> protocolFailure(ProtocolIssue.MALFORMED)
+            is SocketEvent.Closed -> when (event.code) {
+                1008 -> expire()
+                1002 -> protocolFailure(ProtocolIssue.UNSUPPORTED_VERSION)
+                1007, 1009 -> protocolFailure(ProtocolIssue.MALFORMED)
+                else -> lost(ConnectionProblem.NETWORK)
+            }
+        }
+    }
+
+    private fun onRequest(message: ClientMessage, result: CompletableDeferred<CommandResult>) {
+        if (result.isCancelled) return
+        if (!opened || syncId != null || recoveryDeadline != null) {
+            result.complete(CommandResult.NotSent(ConnectionProblem.NETWORK))
+            return
+        }
+        if (credentials.value == null && message !is ClientMessage.Ping && message !is ClientMessage.Create && message !is ClientMessage.Join) {
+            result.complete(CommandResult.NotSent(ConnectionProblem.ADMISSION_REQUIRED))
+            return
+        }
+        send(message, Purpose.PUBLIC, result)
+    }
+
+    private fun send(message: ClientMessage, purpose: Purpose, result: CompletableDeferred<CommandResult>? = null) {
+        if (pending.size >= 32 || message.request_id in pending) {
+            result?.complete(CommandResult.NotSent(ConnectionProblem.BACKPRESSURE))
+            if (purpose != Purpose.PUBLIC) lost(ConnectionProblem.BACKPRESSURE)
+            return
+        }
+        val text = try { codec.encode(message) } catch (_: Exception) {
+            result?.complete(CommandResult.Rejected(message.request_id, RemoteCode.INVALID_MESSAGE))
+            return
+        }
+        val sent = try { socket?.send(text) == true } catch (_: Exception) { false }
+        if (!sent) {
+            result?.complete(CommandResult.NotSent(ConnectionProblem.BACKPRESSURE))
+            lost(ConnectionProblem.BACKPRESSURE)
+            return
+        }
+        val current = generation
+        val timer = scope.launch { delay(5_000); events.send(Event.Timeout(current, message.request_id)) }
+        pending[message.request_id] = Pending(
+            operation(message), purpose, timer, result,
+            (message as? ClientMessage.Ping)?.payload?.nonce,
+            (message as? ClientMessage.Action)?.payload?.client_action_seq,
+        )
+        if (purpose == Purpose.SYNC) syncId = message.request_id
+    }
+
+    private fun message(message: ServerMessage) {
+        val request = message.reply_to?.let { pending[it] }
+        when (message) {
+            is ServerMessage.SessionAccepted -> {
+                if (request == null || request.operation !in setOf(Operation.CREATE, Operation.JOIN, Operation.RESUME)) return
+                val identity = SessionIdentity(message.payload.room_code, message.payload.player_id)
+                if (request.operation == Operation.RESUME && credentials.value?.identity != identity) {
+                    protocolFailure(ProtocolIssue.MALFORMED); return
+                }
+                if (!revisions.accept("session_accepted", identity.roomCode, null, message.room_revision!!)) {
+                    protocolFailure(ProtocolIssue.MALFORMED); return
+                }
+                credentials.save(Credential(endpoint!!, identity, message.payload.resume_token))
+                _session.value = SessionState(identity)
+                complete(message, request)
+                if (request.purpose == Purpose.RESUME) synchronize()
+            }
+            is ServerMessage.Lobby -> {
+                val identity = credentials.value?.identity ?: return
+                if (identity.roomCode != message.payload.room_code || message.payload.players.none { it.player_id == identity.playerId }) {
+                    protocolFailure(ProtocolIssue.MALFORMED); return
+                }
+                if (request != null && request.operation != Operation.STATE) { protocolFailure(ProtocolIssue.MALFORMED); return }
+                if (request != null && message.payload.stage != "lobby") { protocolFailure(ProtocolIssue.MALFORMED); return }
+                if (revisions.accept("lobby_state", identity.roomCode, null, message.room_revision!!)) {
+                    _session.value = _session.value.copy(lobby = message.payload)
+                }
+                if (request != null) {
+                    if (request.purpose == Purpose.SYNC && _session.value.lobby == null) {
+                        protocolFailure(ProtocolIssue.MALFORMED); return
+                    }
+                    complete(message, request)
+                    if (request.purpose == Purpose.SYNC) recovered()
+                }
+            }
+            is ServerMessage.PublicState -> {
+                val identity = credentials.value?.identity ?: return
+                val round = message.payload.public
+                if (revisions.accept("public_state", identity.roomCode, round.round_id, message.room_revision!!)) {
+                    _session.value = _session.value.copy(publicRound = round)
+                }
+            }
+            is ServerMessage.RoleAssigned -> {
+                val identity = credentials.value?.identity ?: return
+                val assigned = message.payload
+                if (revisions.accept("role_assigned", identity.roomCode, assigned.round_id, message.room_revision!!)) {
+                    _session.value = _session.value.copy(assigned = assigned,
+                        roleState = _session.value.roleState?.takeIf { it.public.round_id == assigned.round_id },
+                        publicRound = _session.value.publicRound?.takeIf { it.round_id == assigned.round_id })
+                }
+            }
+            is ServerMessage.RoleState -> {
+                val identity = credentials.value?.identity ?: return
+                val assigned = _session.value.assigned
+                val payload = message.payload
+                if (assigned == null || assigned.round_id != payload.public.round_id) {
+                    if (request != null) protocolFailure(ProtocolIssue.MALFORMED)
+                    return
+                }
+                if (payload.stations.roles().toSet() != assigned.roles.toSet() ||
+                    payload.briefing.acknowledged == (identity.playerId in payload.briefing.waiting_player_ids) ||
+                    (request != null && request.operation != Operation.STATE)) {
+                    protocolFailure(ProtocolIssue.MALFORMED); return
+                }
+                if (revisions.accept("role_state", identity.roomCode, payload.public.round_id, message.room_revision!!)) {
+                    _session.value = _session.value.copy(roleState = payload, publicRound = payload.public)
+                }
+                if (request != null) {
+                    if (_session.value.roleState == null) { protocolFailure(ProtocolIssue.MALFORMED); return }
+                    complete(message, request)
+                    if (request.purpose == Purpose.SYNC) recovered()
+                }
+            }
+            is ServerMessage.Pong -> {
+                if (request == null) return
+                if (request.operation != Operation.PING || request.nonce != message.payload.nonce) { protocolFailure(ProtocolIssue.MALFORMED); return }
+                complete(message, request)
+            }
+            is ServerMessage.Ack -> {
+                if (request == null) return
+                if (message.payload.operation != wireOperation(request.operation) ||
+                    (request.operation == Operation.ACTION && (message.payload.client_action_seq != request.actionSequence || message.payload.applied_tick == null))) {
+                    protocolFailure(ProtocolIssue.MALFORMED); return
+                }
+                if (request.purpose == Purpose.LEAVE) { stopTransport(); state(ConnectionStatus.DISCONNECTED) }
+                complete(message, request)
+            }
+            is ServerMessage.Error -> {
+                val code = RemoteCode.fromWire(message.payload.code)
+                if (request != null) {
+                    pending.remove(message.reply_to)?.timer?.cancel()
+                }
+                when {
+                    code == RemoteCode.SESSION_EXPIRED -> expire()
+                    code == RemoteCode.NOT_AUTHENTICATED -> {
+                        resetMembership(); stopTransport(); failPending()
+                        state(ConnectionStatus.UNAVAILABLE, ConnectionProblem.ADMISSION_REQUIRED)
+                    }
+                    request?.purpose == Purpose.RESUME -> lost(ConnectionProblem.NETWORK)
+                    request?.purpose == Purpose.SYNC -> protocolFailure(ProtocolIssue.MALFORMED)
+                    request?.purpose == Purpose.LEAVE -> { stopTransport(); state(ConnectionStatus.DISCONNECTED) }
+                }
+                request?.result?.complete(CommandResult.Rejected(message.reply_to!!, code))
+            }
+        }
+    }
+
+    private fun complete(message: ServerMessage, request: Pending) {
+        pending.remove(message.reply_to)?.timer?.cancel()
+        request.result?.complete(CommandResult.Accepted(message.reply_to!!, request.operation, message.room_revision))
+    }
+    private fun synchronize() {
+        if (syncId == null && opened) send(ClientMessage.State(newId()), Purpose.SYNC)
+    }
+    private fun recovered() {
+        syncId = null
+        recoveryDeadline = null
+        recoveryTimer?.cancel()
+        retry?.cancel()
+        retryAttempt = 0
+        state(ConnectionStatus.CONNECTED)
+        connectReply?.complete(CommandResult.Accepted("connect", Operation.CONNECT))
+        connectReply = null
+    }
+
+    private fun timedOut(id: String) {
+        val request = pending.remove(id) ?: return
+        when {
+            request.purpose == Purpose.LEAVE -> { stopTransport(); state(ConnectionStatus.DISCONNECTED, ConnectionProblem.COMMAND_UNCERTAIN) }
+            request.purpose == Purpose.HEARTBEAT || request.operation == Operation.PING -> lost(ConnectionProblem.HEARTBEAT_TIMEOUT)
+            request.purpose == Purpose.RESUME -> lost(ConnectionProblem.NETWORK)
+            request.purpose == Purpose.SYNC -> lost(ConnectionProblem.SNAPSHOT_TIMEOUT)
+            request.operation in setOf(Operation.CREATE, Operation.JOIN) -> {
+                stopTransport(); failPending(); state(ConnectionStatus.UNAVAILABLE, ConnectionProblem.COMMAND_UNCERTAIN)
+            }
+            else -> { state(ConnectionStatus.CONNECTED, ConnectionProblem.COMMAND_UNCERTAIN); synchronize() }
+        }
+        request.result?.complete(CommandResult.Uncertain(id, request.operation))
+    }
+
+    private fun protocolFailure(issue: ProtocolIssue) {
+        _session.value = _session.value.copy(lobby = null, publicRound = null, assigned = null, roleState = null)
+        revisions.clear()
+        state(ConnectionStatus.PROTOCOL_ERROR, if (issue == ProtocolIssue.UNSUPPORTED_VERSION) ConnectionProblem.UNSUPPORTED_VERSION else ConnectionProblem.PROTOCOL)
+        if (issue == ProtocolIssue.UNKNOWN_TYPE && credentials.value != null && syncId == null && opened) {
+            synchronize()
+        } else {
+            stopTransport()
+            failPending()
+            resetMembership()
+        }
+    }
+    private fun onLeave(result: CompletableDeferred<CommandResult>) {
+        if (result.isCancelled) return
+        resetMembership()
+        failPending()
+        if (opened) send(ClientMessage.Leave(newId()), Purpose.LEAVE, result)
+        else { stopTransport(); state(ConnectionStatus.DISCONNECTED); result.complete(CommandResult.LeftLocally) }
+    }
+    private fun lost(problem: ConnectionProblem) {
+        stopTransport()
+        failPending()
+        _session.value = SessionState()
+        revisions.clear()
+        if (credentials.value == null) { state(ConnectionStatus.UNAVAILABLE, problem); return }
+        if (recoveryDeadline == null) {
+            recoveryDeadline = now() + 30_000
+            recoveryEpoch++
+            val epoch = recoveryEpoch
+            recoveryTimer = scope.launch { delay(30_000); events.send(Event.RecoveryExpired(epoch)) }
+        }
+        val delays = longArrayOf(1_000, 2_000, 4_000, 8_000)
+        if (retryAttempt >= delays.size || now() + delays[retryAttempt] >= recoveryDeadline!!) {
+            state(ConnectionStatus.UNAVAILABLE, ConnectionProblem.RECONNECT_EXHAUSTED)
+            return
+        }
+        val wait = delays[retryAttempt++]
+        val epoch = recoveryEpoch
+        state(ConnectionStatus.RECONNECTING, problem)
+        retry = scope.launch { delay(wait); events.send(Event.Retry(epoch)) }
+    }
+    private fun expire() {
+        stopTransport()
+        failPending()
+        resetMembership()
+        state(ConnectionStatus.SESSION_EXPIRED)
+    }
+    private fun resetMembership() {
+        credentials.clear()
+        _session.value = SessionState()
+        revisions.clear()
+        recoveryDeadline = null
+        recoveryTimer?.cancel()
+        retry?.cancel()
+        retryAttempt = 0
+        syncId = null
+    }
+    private fun stopTransport() {
+        generation++
+        opened = false
+        socket?.cancel()
+        socket = null
+        reader?.cancel(); reader = null
+        openTimer?.cancel(); openTimer = null
+        heartbeat?.cancel(); heartbeat = null
+        syncId = null
+    }
+    private fun failPending() {
+        pending.forEach { (id, request) ->
+            request.timer.cancel()
+            request.result?.complete(CommandResult.Uncertain(id, request.operation))
+        }
+        pending.clear()
+        connectReply?.complete(CommandResult.NotSent(ConnectionProblem.NETWORK))
+        connectReply = null
+    }
+    private fun operation(message: ClientMessage) = when (message) {
+        is ClientMessage.Briefing -> Operation.BRIEFING
+        is ClientMessage.Ping -> Operation.PING
+        is ClientMessage.Create -> Operation.CREATE
+        is ClientMessage.Join -> Operation.JOIN
+        is ClientMessage.Resume -> Operation.RESUME
+        is ClientMessage.Ready -> Operation.READY
+        is ClientMessage.Start -> Operation.START
+        is ClientMessage.State -> Operation.STATE
+        is ClientMessage.Leave -> Operation.LEAVE
+        is ClientMessage.Action -> Operation.ACTION
+    }
+    private fun wireOperation(operation: Operation): String = when (operation) {
+        Operation.BRIEFING -> "briefing_ready"
+        Operation.READY -> "player_ready"
+        Operation.LEAVE -> "leave_room"
+        Operation.ACTION -> "player_action"
+        Operation.START -> "start_game"
+        else -> ""
+    }
+}

@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from one_job.application.room_service import RoomClosed, RoomService
 from one_job.application.sessions import Peer, TokenIssuer, token_digest
 from one_job.application.timing import Clock
+from one_job.domain.config import GameConfig
 from one_job.protocol.envelopes import (
     ClientMessage,
     CreateRoomEnvelope,
@@ -29,13 +30,14 @@ class RoomSettings:
     max_players: int = 3
     disconnect_grace: float = 30.0
     idle_timeout: float = 1800.0
+    briefing_timeout: float = 60.0
 
     def __post_init__(self) -> None:
         if type(self.max_rooms) is not int or self.max_rooms < 1:
             raise ValueError("room capacity must be positive")
         if type(self.max_players) is not int or self.max_players not in (2, 3):
             raise ValueError("player capacity must be two or three")
-        for value in (self.disconnect_grace, self.idle_timeout):
+        for value in (self.disconnect_grace, self.idle_timeout, self.briefing_timeout):
             if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
                 raise ValueError("room deadlines must be positive and finite")
 
@@ -52,12 +54,18 @@ class RoomRegistry:
         *,
         code_factory: Callable[[], str] = secure_room_code,
         id_factory: Callable[[], UUID] = uuid4,
+        round_id_factory: Callable[[], UUID] = uuid4,
+        seed_factory: Callable[[], int] = lambda: secrets.randbits(64),
+        game_config: GameConfig | None = None,
     ) -> None:
         self.clock = clock
         self.settings = settings or RoomSettings()
         self.issuer = TokenIssuer()
         self._code_factory = code_factory
         self._id_factory = id_factory
+        self.round_id_factory = round_id_factory
+        self.seed_factory = seed_factory
+        self.game_config = game_config or GameConfig()
         self._rooms: dict[str, RoomService] = {}
         self._sessions: dict[bytes, tuple[RoomService, UUID]] = {}
         self._bindings: dict[int, tuple[RoomService, UUID]] = {}

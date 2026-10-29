@@ -1,16 +1,17 @@
 # WebSocket protocol v1
 
-## Implemented Phase 04 subset
+## Implemented Phase 08 subset
 
 The server exposes independent `GET /health` and `/ws`. WebSockets use JSON text
 frames only, one message per frame, maximum UTF-8 size 16 KiB (16,384 bytes).
-The Python boundary uses strict Pydantic discriminated unions; Android will mirror
-it with sealed serializable types in Phase 06. No arbitrary dictionaries should
+The Python boundary uses strict Pydantic discriminated unions; Android mirrors
+the implemented subset with sealed serializable types. No arbitrary dictionaries should
 define gameplay payloads.
 
 Implemented commands: `ping`, `create_room`, `join_room`, `resume_session`,
-`leave_room`, `player_ready`, `request_state`, and eligibility checks for
-`start_game`. Their payload DTOs reject unknown fields/coercion. Names are trimmed
+`leave_room`, `player_ready`, `request_state`, `start_game`, `briefing_ready` and
+the typed ownership boundary for `player_action`. Their payload DTOs reject
+unknown fields/coercion. Names are trimmed
 1–20 Unicode scalar characters without control characters; duplicate names are
 allowed. Codes trim outer whitespace and uppercase six ASCII symbols from
 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. Unknown/started/full rooms produce safe errors;
@@ -20,19 +21,36 @@ The snapshot contains only code/stage/host ID/roster connectivity/readiness and
 common `can_start` eligibility. Tokens never appear in broadcasts.
 
 `start_game` checks membership, host, lobby stage and exactly 2 or 3 connected
-ready players, in that order. An eligible request returns `feature_unavailable`
-without changing the stage/revision. `can_start` reports eligibility, not a
-playable launch. `player_ready` returns `ack` before any changed lobby snapshot;
-an unchanged ready value returns only the ack. `request_state` returns a correlated
-full snapshot. Leave returns `ack`, invalidates the membership and closes 1000.
+ready players, in that order. An eligible request returns `ack`, freezes the
+roster/config/seed under a new round UUID and changes stage to `briefing`.
+Each player receives only their `role_assigned` and `role_state`, alongside the
+shared lobby snapshot. Host status never widens private access. `can_start`
+reports lobby eligibility. `player_ready` returns `ack` before any changed lobby snapshot;
+an unchanged ready value returns only the ack. In lobby, `request_state` returns
+a correlated `lobby_state`. During a round it sends unsolicited lobby and owned
+assignment snapshots followed by the correlated full `role_state` as its terminal
+reply. Resume sends fresh owned assignment/state too; the token remains room-local.
+Leave returns `ack`, invalidates the membership and closes 1000.
 All membership/connectivity changes clear readiness and advance revision once;
 no-op commands and cached replays do not advance it.
 
-`briefing_ready`, `player_action`, `play_again`, `return_to_lobby` and `join_display`
-remain recognized reserved commands, returning `feature_unavailable` before their
-future business payload decoding. No engine call, game loop, role/private view,
-observer membership or public-state broadcast is exposed. The remaining catalog
-describes the later gameplay contract. Android codec implementation remains 06.
+`briefing_ready` accepts a canonical round UUID and acknowledges all of that
+authenticated participant's stations. Repeated acknowledgement is a no-op ack.
+The initial deadline is 60 seconds; disconnect suspends its remaining budget
+during the existing 30-second grace. Only reconnection of all frozen participants
+resumes it. Explicit leave, grace expiry or briefing expiry abort with
+`player_left`, `disconnect_timeout` or `briefing_timeout` in the public result.
+All acknowledged participants remain in briefing with `held_for_gameplay=true`;
+no countdown, engine start, simulation tick or control panel is enabled.
+
+All nine `player_action` shapes are validated. A mismatched round returns
+`stale_round`; authenticated ownership is checked before the held-stage gate,
+returning `not_role_owner` for another station and `invalid_stage` for one's own.
+These are ordinary correlated `error` replies in Phase 08. No action is applied.
+The running action acknowledgements/sequencing and `action_rejected` catalog below
+belong to later gameplay. `play_again`, `return_to_lobby` and `join_display` remain
+reserved with `feature_unavailable` before business payload decoding. No observer
+membership or `public_state` broadcast is exposed.
 
 Validation order: UTF-8 byte size, JSON, strict required envelope, integer version,
 recognized type, then implemented payload. Unknown fields/types, missing fields,
@@ -53,7 +71,7 @@ grace then lasts a separate 30 seconds. The separate ping budget is 1/s, burst 3
 burst 40. A fifth rate violation within ten seconds closes 1008 after `rate_limited`.
 
 The bounded outbox holds 32 queued items plus at most one in-flight send. Only
-unsolicited snapshots of the same kind/room (lobby) or kind/round (public state)
+unsolicited snapshots of the same kind/room (lobby) or kind/round (role/public state)
 coalesce, at the queue tail; older
 revisions are ignored. Correlated responses and critical events never coalesce.
 Queue overflow or a five-second blocked send closes 1013, requiring future clients
@@ -66,8 +84,41 @@ reject oversize frames before the app can send an error; close 1009 is authorita
 validated request ID, known operation/error code, close code and duration), never
 payloads, tokens, views or exception text. Uvicorn protocol debug logging is not
 enabled. Shared [Phase 04 fixtures](protocol-fixtures/phase04.json) validate the
-current Python DTOs and must be mirrored by Phase 06 Android codec tests.
+current Python DTOs and are mirrored by Android codec tests.
 [Phase 03 fixtures](protocol-fixtures/phase03.json) preserve the earlier subset.
+[Phase 06 fixtures](protocol-fixtures/phase06.json) add synthetic join/resume/leave
+and expiry cases checked in both languages. No wire version or server behavior
+changed in Phase 06.
+[Phase 08 fixtures](protocol-fixtures/phase08.json) add synthetic owned assignments,
+two-/three-player private states and acknowledgement replies. Both implementations
+check these fixtures; no live token or captured private frame is committed.
+
+Android accepts additive incoming fields while requiring the typed known fields
+and strict primitive types. Malformed/oversize/duplicate-key frames and unsupported
+versions produce safe protocol feedback; unknown message kinds discard cached
+views and request a fresh snapshot, or close if recovery cannot be established.
+The decoder bounds JSON nesting to 64 containers. No raw error message, close
+reason, frame or token reaches public connection/command state or UI diagnostics.
+The current decoder supports `pong`, `session_accepted`, `ack`, `error`,
+`lobby_state`, `role_assigned`, `role_state` and the reserved `public_state`.
+Role decoding requires exactly one station or Engineer+Shields, matching metadata
+and station keys. Unknown station keys, null station values or inconsistent
+ownership/acknowledgement are protocol failures; private caches are cleared.
+Recovery completes only after the fresh correlated private snapshot. Equal
+revisions across distinct message kinds are valid. Later event kinds need DTOs
+and fixture updates in their selected phases.
+
+Android uses one socket per repository, 16 KiB accepted text frames, 64 incoming
+events and 64 actor events, a 64 KiB outgoing socket queue and 32 pending requests.
+Open and correlated request deadlines are five seconds; a missing command reply
+is **uncertain**, never automatically rejected or replayed. A ten-second ping
+watchdog uses the same five-second reply deadline. Recovery clears cached views,
+fences generations and sends only credential resume, then a new correlated
+`request_state`. Delays are 1/2/4/8 seconds within an absolute 30-second budget,
+including handshakes and snapshot deadlines. There is no automatic create/join
+or action resend. Distinct snapshot kinds may share a revision; older/duplicate
+same-kind revisions and retired rounds are ignored. Credentials remain private
+in process memory and are cleared on explicit leave, expiry or owner closure.
 
 Resume authenticates by digest before binding a connection. It retains identity
 and token, replaces/fences the old generation and closes an old active socket
@@ -90,6 +141,8 @@ replays return the same targeted session receipt. After resume, use a fresh
 metadata; a private lifespan key reconstructs the stable token only when sending
 targeted admission replies. Membership/indexes store only token digests. See
 [ADR-014](DECISIONS.md#adr-014--lobby-ownership-credential-replay-and-expiry-boundaries).
+Round-state replies are cached only in the recipient membership's bounded replay
+cache; private fields are excluded from DTO/replay representations and logs.
 
 ## Envelope
 
@@ -193,7 +246,7 @@ commands are supplied by the application, not copied from untrusted fields.
 | `ack` | `operation: client message type`; player actions also `client_action_seq, applied_tick`; requester only |
 | `lobby_state` | `room_code, stage, host_player_id, players: [{player_id,name,connected,ready}], can_start: boolean`; room members |
 | `role_assigned` | `round_id, roles: [Role], instructions: [{role,title,steps:[string]}]`; owning player only |
-| `role_state` | `public: PublicRoundView, stations: {owned Role: StationView}`; owning player only |
+| `role_state` | `public: PublicRoundView, stations: {owned Role: StationView}, briefing: BriefingStatus`; owning player only |
 | `public_state` (12) | `public: PublicRoundView`; observers only |
 | `emergency_event` | `round_id, emergency_id, kind, status: started|resolved|failed`; shared labels only, no private targets |
 | `game_over` | `round_id, result: {outcome,reason,survived_ms,final_hull_percent,resolved_count,failed_count,players:[{player_id,name}]}`; all room members |
@@ -213,6 +266,14 @@ Shared membership is sent even during a round to show connection state.
 Warning labels have no hidden target/direction/countdown. Shared stage/timing is
 inside each private role snapshot so a client can reconcile it atomically.
 
+`BriefingStatus` contains `acknowledged: boolean` for the recipient,
+`waiting_player_ids: [UUID]` from the frozen roster, `remaining_ms: integer>=0`,
+`complete: boolean` and `held_for_gameplay: boolean`. Completion means no waiting
+participants. Held means complete and nonterminal in this phase. The briefing
+budget is distinct from the unchanged round `public.remaining_ms`; the UI does
+not run either clock locally. Aborts are conveyed in `public.result`, not a new
+results route or `game_over` orchestration.
+
 Station views, keyed only by owned roles:
 
 - `pilot`: `lane`, `maneuver_ready`, `evade_remaining_ticks`, `cooldowns`,
@@ -228,6 +289,10 @@ Station views, keyed only by owned roles:
 ticks, not an open-ended map of arbitrary engine attributes. Before emergencies,
 the arrays are empty. `deadline_remaining_ms` is server-computed. A later change
 must update these schemas and fixtures, rather than silently adding raw state.
+Pilot cooldown keys are `move_lane, evade`; Engineer keys are
+`engine_boost, coolant`; Shields keys are `recharge_shield, shield_boost`.
+Phase 08 emits empty emergency arrays
+and `maneuver_ready=false` because controls are held.
 
 ## Correlation, ordering and recovery
 

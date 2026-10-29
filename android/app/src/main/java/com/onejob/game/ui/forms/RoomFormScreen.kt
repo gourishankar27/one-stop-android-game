@@ -15,7 +15,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.onejob.game.R
-import com.onejob.game.data.ConnectionStatus
+import androidx.activity.compose.BackHandler
+import com.onejob.game.ui.connection.ConnectionFeedback
+import com.onejob.game.ui.lobby.LobbyFeedback
+import com.onejob.game.ui.lobby.LobbyFeedbackText
 import com.onejob.game.ui.ShellPage
 
 @Composable
@@ -24,21 +27,16 @@ fun RoomFormScreen(
     state: RoomFormUiState,
     onNameChanged: (String) -> Unit,
     onCodeChanged: (String) -> Unit,
-    onCheckDraft: () -> Unit,
+    onSubmit: () -> Unit,
+    onResetAttempt: () -> Unit,
     onBack: () -> Unit,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
-    val checkDraft = { onCheckDraft(); keyboard?.hide(); Unit }
+    val submit = { onSubmit(); keyboard?.hide(); Unit }
+    BackHandler(onBack = onBack)
     ShellPage(if (kind == FormKind.CREATE) R.string.create_title else R.string.join_title, onBack) {
-        Text(stringResource(R.string.local_draft), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.form_description))
-        Text(stringResource(when (state.connectionStatus) {
-            ConnectionStatus.UNAVAILABLE -> R.string.connection_unavailable
-            ConnectionStatus.CONNECTING -> R.string.connection_connecting
-            ConnectionStatus.CONNECTED -> R.string.connection_connected
-            ConnectionStatus.RECONNECTING -> R.string.connection_reconnecting
-            ConnectionStatus.SESSION_EXPIRED -> R.string.connection_expired
-        }))
+        ConnectionFeedback(state.connection)
         OutlinedTextField(
             value = state.name,
             onValueChange = onNameChanged,
@@ -46,10 +44,11 @@ fun RoomFormScreen(
             supportingText = { DraftHint(state.nameIssue, R.string.name_hint) },
             isError = state.nameIssue != null,
             singleLine = true,
+            enabled = !state.pending && !state.exiting,
             keyboardOptions = KeyboardOptions(
                 imeAction = if (kind == FormKind.JOIN) ImeAction.Next else ImeAction.Done,
             ),
-            keyboardActions = KeyboardActions(onDone = { checkDraft() }),
+            keyboardActions = KeyboardActions(onDone = { submit() }),
             modifier = Modifier.fillMaxWidth().testTag("nameInput"),
         )
         if (kind == FormKind.JOIN) {
@@ -60,18 +59,23 @@ fun RoomFormScreen(
                 supportingText = { DraftHint(state.codeIssue, R.string.code_hint) },
                 isError = state.codeIssue != null,
                 singleLine = true,
+                enabled = !state.pending && !state.exiting,
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done,
                 ),
-                keyboardActions = KeyboardActions(onDone = { checkDraft() }),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
                 modifier = Modifier.fillMaxWidth().testTag("codeInput"),
             )
         }
-        Button(onClick = checkDraft, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.check_draft))
+        Button(onClick = submit, enabled = state.canSubmit, modifier = Modifier.fillMaxWidth().testTag("submitAdmission")) {
+            Text(stringResource(if (kind == FormKind.CREATE) R.string.submit_create else R.string.submit_join))
         }
-        if (state.draftValid) {
-            Text(stringResource(R.string.draft_valid))
+        if (state.pending) Text(stringResource(R.string.admission_pending))
+        LobbyFeedbackText(state.feedback)
+        if (state.feedback == LobbyFeedback.UNCERTAIN) {
+            Button(onClick = onResetAttempt, enabled = !state.pending && !state.exiting, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.reset_attempt))
+            }
         }
     }
 }

@@ -267,6 +267,109 @@ vacant host; no Android codec exists to migrate before Phase 06. All session
 errors are safe and targeted. No game runner, roles or observer membership is
 created. Later phases can reuse eligibility and room ownership.
 
+## ADR-015 — Android transport ownership and debug endpoint opt-in
+
+Date: 2026-10-28
+
+Status: Accepted
+
+Context: Phase 06 adds real transport without advancing into the usable lobby UI.
+Rotation, uncertain replies and stale callbacks must not create duplicate sockets
+or repeated admissions/actions. Debug LAN testing must not weaken release policy.
+
+Decision: An application-owned repository serializes commands/callbacks through
+one coroutine owner. A data source owns one OkHttp socket and bounded receive/send
+queues. Every connection has a generation; old callbacks/timers are fenced. There
+are at most 32 pending requests with five-second reply deadlines. Timeout/loss is
+uncertain, never an automatic command rejection or resend. Only credential resume,
+ping and a fresh full-state request are automatic recovery operations.
+
+Keep credentials private in process memory, bound to their endpoint. Public flows,
+results, logs, navigation and SavedStateHandle contain no token/raw error frame.
+Clear cached snapshots on recovery; accept distinct message types at equal
+revisions. Resume uses 1/2/4/8-second delays with an absolute 30-second recovery
+budget; successful resume requests a new correlated full snapshot before declaring
+recovery complete. Explicit leave/expiry/owner shutdown clear credentials.
+
+Release accepts WSS only and has no default endpoint. Debug also has no implicit
+connection: Gradle properties explicitly select an endpoint and opt into cleartext
+for emulator/loopback or literal private LAN addresses. The debug-only network
+security resource permits that transport; the typed endpoint validator restricts
+its actual use. No TLS trust bypass or logging interceptor is installed. Existing
+toolchain pins remain; add OkHttp 4.12.0 and serialization 1.9.0 with compiler plugin
+2.2.21. A debug-only Connect/Ping/Create test membership/Disconnect panel supplies
+connection feedback and a disposable membership for recovery checks; repository
+callers exercise join/resume without implementing Phase 07 UI.
+
+Consequences: The shell's draft forms remain local and no game authority moves
+to Android. Process death loses the in-memory credential; durable storage and the
+full background/recovery matrix remain Phase 14. Shared v1 fixtures run in both
+languages; no wire version or room policy change is required.
+
+## ADR-016 — Admission-driven lobby UI and explicit uncertain attempts
+
+Date: 2026-10-28
+
+Status: Accepted
+
+Context: Phase 07 binds usable forms and lobby controls to the Phase 06 owner.
+An acknowledgement cannot invent a member, readiness or a successful round start.
+Back/cancellation and uncertain admission must not leave a live, forgotten socket
+or silently submit another create/join.
+
+Decision: Keep one application repository and navigation-entry form ViewModels.
+Navigate to Lobby only from an authoritative session identity. Preserve nonsecret
+raw inputs on rejection; normalize only the submitted name/code. Guard commands
+synchronously while pending. An uncertain admission requires an explicit reset
+before a new submit. Cancel closes the attempt, or leaves if admission already
+succeeded. No automatic retry of admissions is introduced.
+
+A shared lobby ViewModel renders IDs, host/ready/connected flags and `can_start`
+from snapshots. It retains only presentation membership through bounded recovery,
+not an old roster. Readiness is never optimistic. Both Back controls ask before
+leave; expiry/removal returns Home. Eligible host Start sends the ordinary typed
+intent and displays the server's planned feature-unavailable response. No role
+screen or gameplay transition is implemented. Home's development transport panel
+is superseded by the real forms; its debug implementation remains available.
+
+Verification uses one physical phone plus two separately running Android emulator
+clients, as explicitly selected by the user for this session. Record that device
+mix rather than claiming three physical phones.
+
+Consequences: No new library or wire change is needed. Saved state contains only
+form inputs/validation presentation. The Phase 14 process-death/background matrix
+remains deferred; process death still requires fresh admission.
+
+## ADR-017 — Private briefing rounds held before gameplay
+
+Date: 2026-10-28
+
+Status: Accepted
+
+Phase 08 replaces eligible Start with a round context owned by the existing room
+mailbox. Freeze the roster, generate a round ID/seed, and seed-shuffle players in
+Pilot/Engineer/Shields order. Two players split Pilot / Engineer+Shields. The
+engine copies the post-assignment Random state for a private, reproducible stream.
+Only owned metadata/station views are targeted to each authenticated player;
+neither host status nor resume grants access to another station's details.
+
+Start acknowledges before assignments/full snapshots. State requests and resume
+restore assignment plus a fresh correlated private snapshot. Replay stays bounded
+and membership-scoped. Briefing acknowledgements cover all owned stations. The
+60-second acknowledgement deadline pauses during the existing disconnect grace;
+all original participants must reconnect to resume. Explicit leave/grace expiry
+aborts the frozen round. After all acknowledgements, stop the deadline and hold
+in briefing with an explicit held-for-gameplay flag. No ticks or countdown run.
+Abort stays on the briefing screen with Leave; rematch is still Phase 11.
+
+Type all nine action shapes and validate authenticated identity, round ID and
+engine ownership. Owned actions still reject invalid_stage during briefing,
+pause or hold; no control mechanics are activated. Android requires an explicit
+read confirmation for every owned station before acknowledging and clears
+private presentation on recovery. Continue the user's one-phone/two-emulator
+verification preference. Update the v1 role/briefing subset, allowlisted briefing
+status, fixtures and both codecs together. No dependency/service is added.
+
 ## Decisions still deferred
 
 External backend hosting and an open-source license are not selected. Phase 16 must start with an evidence-based local-networking decision. Phase 17 must specify its submarine mechanics after spaceship playtests. Phase 18 reevaluates current store requirements and crash-reporting needs without publishing anything.

@@ -1,9 +1,12 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+import java.net.URI
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -20,8 +23,16 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "WS_ENDPOINT", endpointLiteral("oneJobDebugWsUrl"))
+            val cleartext = providers.gradleProperty("oneJobAllowDebugCleartext").orElse("false").get()
+            require(cleartext in setOf("true", "false")) { "oneJobAllowDebugCleartext must be true or false" }
+            buildConfigField("boolean", "ALLOW_DEBUG_CLEARTEXT", cleartext)
+        }
         release {
             isMinifyEnabled = false
+            buildConfigField("String", "WS_ENDPOINT", endpointLiteral("oneJobReleaseWsUrl", release = true))
+            buildConfigField("boolean", "ALLOW_DEBUG_CLEARTEXT", "false")
         }
     }
 
@@ -32,7 +43,23 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
+
+    sourceSets.getByName("test").resources.srcDir(rootProject.file("../docs/protocol-fixtures"))
+}
+
+fun endpointLiteral(property: String, release: Boolean = false): String {
+    val value = providers.gradleProperty(property).orElse("").get()
+    if (value.isNotEmpty()) {
+        val uri = runCatching { URI(value) }.getOrNull()
+        require(uri != null && uri.host != null && uri.rawUserInfo == null && uri.rawQuery == null &&
+            uri.rawFragment == null && uri.rawPath == "/ws" &&
+            uri.scheme in (if (release) setOf("wss") else setOf("ws", "wss"))) {
+            "Endpoint must be a credential-free WebSocket /ws URL (release requires WSS)"
+        }
+    }
+    return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
 
 kotlin {
@@ -56,6 +83,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.9.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
