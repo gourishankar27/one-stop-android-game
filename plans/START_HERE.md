@@ -18,7 +18,7 @@ Consult the master ledger before selecting a phase. For the Android networking
 session, after Phase 05 is verified and checked off, explicitly request:
 
 ```text
-Implement plans/phase-06-android-networking.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
+Implement plans/phase-12-public-display.md. Follow AGENTS.md and implement only this phase. Verify dependencies, run the required checks, update plans/plans.md only if all completion criteria are met, report the handoff, and stop.
 ```
 
 Keep one phase per session. The master plan is the only progress ledger.

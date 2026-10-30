@@ -4,6 +4,7 @@ import com.onejob.game.data.repository.SessionState
 
 /** Presentation routing from authoritative stages; no clock or one-shot event dependency. */
 fun sessionDestination(session: SessionState, previous: AppDestination?, recovering: Boolean): AppDestination {
+    if (session.identity?.kind == "display") return AppDestination.DISPLAY
     val lobbyStage = session.lobby?.stage
     if (lobbyStage == "lobby") return AppDestination.LOBBY
     // A fresh briefing invalidates the preceding result before its assignment arrives.
@@ -26,4 +27,4 @@ fun sessionDestination(session: SessionState, previous: AppDestination?, recover
 }
 
 val sessionDestinations = setOf(AppDestination.LOBBY, AppDestination.ROLE,
-    AppDestination.COUNTDOWN, AppDestination.GAMEPLAY, AppDestination.RESULTS)
+    AppDestination.COUNTDOWN, AppDestination.GAMEPLAY, AppDestination.RESULTS, AppDestination.DISPLAY)

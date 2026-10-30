@@ -8,7 +8,7 @@ import json
 import secrets
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 from one_job.protocol.envelopes import (
@@ -18,6 +18,7 @@ from one_job.protocol.envelopes import (
     ErrorEnvelope,
     LobbyStateEnvelope,
     PongEnvelope,
+    PublicStateEnvelope,
     RoleStateEnvelope,
     ServerMessage,
 )
@@ -60,6 +61,7 @@ class AdmissionReceipt:
     player_id: UUID
     request_id: str
     revision: int
+    kind: Literal["player", "display"] = "player"
 
 
 type ReplayReply = (
@@ -68,6 +70,7 @@ type ReplayReply = (
     | ErrorEnvelope
     | LobbyStateEnvelope
     | RoleStateEnvelope
+    | PublicStateEnvelope
     | PongEnvelope
     | AdmissionReceipt
 )

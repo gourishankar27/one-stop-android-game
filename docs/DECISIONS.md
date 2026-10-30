@@ -499,6 +499,80 @@ state; stage/round snapshots restore the destination. Returning to lobby or a ne
 briefing retires the old round on Android and clears cached views/feedback.
 No database, framework, library, display/audio or Phase 14 fault matrix is added.
 
+## ADR-021 — Separate public display sessions
+
+Date: 2026-10-29
+
+Status: Accepted
+
+The user explicitly selected Phase 12 while earlier physical-phone/human gates
+remain deferred. Implement only observers; do not mark those prerequisites complete.
+The commit title mentions Public Display, but observer admission is still reserved.
+
+Keep display sessions in a separate room-owned collection, capped at two including
+disconnected seats during 30-second grace. Internal UUIDs/credentials are distinct
+from player identity: admission returns kind=display and player_id=null. Reuse the
+existing digest/index, bounded replay, generation fencing and recovery machinery.
+Displays cannot control, ready, host or keep a controllerless room alive. Their
+join/resume/disconnect/leave/expiry never reset player readiness, pause gameplay
+or change host. Observer activity does not extend the room's idle deadline.
+Deleting a room expires all observers and invalidates their credentials.
+
+Send displays the existing public lobby roster and an independently constructed
+public_state, never role assignments/station state. public_state.public is null
+in lobby because no round exists; this explicit nullable extension avoids a fake
+round ID/timer. During a round it uses the existing allowlisted PublicRoundView.
+Snapshots, rather than private or one-shot events, drive the display UI. Final
+public snapshots are critical, as player terminal snapshots already are.
+
+Add a code-only Android display admission form and a dedicated public ViewModel/
+screen. Membership kind controls routing and rejects private inbound messages;
+the repository also blocks display control intents. Credentials remain private,
+endpoint-bound and memory-only. No TV/casting, animation, new dependencies, game
+rules or later resilience/presentation phase is introduced. Leave completion open
+for any deferred real-phone/tablet verification.
+
+## ADR-022 — Optional foreground feedback and restrained role presentation
+
+Date: 2026-10-29
+
+Status: Accepted
+
+The user explicitly selected Phase 13 while physical-phone testing remains
+deferred. Preserve the uncommitted Phase 12 implementation and unrelated prompt
+edit. Phase 11's phone and Phase 10's human gates remain open. Review historical
+phone readability evidence and an available emulator baseline before effects;
+current physical-phone review/listening/TalkBack/group gates remain pending.
+This is a documented scope/dependency exception, not completion evidence.
+
+Use local FeedbackPreferences(audioEnabled,hapticsEnabled,reducedMotion), stored
+as exactly three private booleans without session data. Audio and haptics default
+off; reduced motion defaults on. All essential information remains visible text.
+Settings are reachable within a session and never send a game command.
+
+One application-owned feedback controller consumes matching authoritative
+snapshots and correlated action receipts. A pure bounded mapper remembers round,
+emergency ID, countdown step and action sequence; first/full recovery/background
+snapshots establish a silent baseline. Hidden/paused/disconnected/settings views
+consume events without output; enabling a setting never replays history. Activity
+recreation replaces the platform sink while retaining in-memory deduplication.
+Process restart has no session credentials and starts from a silent baseline.
+
+Effects are short generated PCM tones and platform View haptics. At most one
+sound stream, three cues per five seconds, 350ms global spacing and 1200ms urgent
+spacing; no repeated alarm loop or queued catch-up effects. Audio focus/ringer/
+device settings are respected. Pause/window focus loss stops sound and prevents
+new effects; brief system haptic pulses are not a background service. No sample
+or focus callback may play a late cue. Four generated sine-tone assets have a
+reproducible stdlib generator and provenance, without adding a license grant or
+assigning ownership on the user's behalf.
+
+Role identity uses explicit labels with P/E/S monograms and contrast-tested tints,
+never color alone. Navigation is instant by default; optional fades are brief,
+without flashes or continuous motion. Improve headings, slider naming and polite
+warning/feedback accessibility semantics. No rule/protocol/dependency, background
+audio service, marketing art, TV/casting or Phase 14 fault matrix is added.
+
 ## Decisions still deferred
 
 External backend hosting and an open-source license are not selected. Phase 16 must start with an evidence-based local-networking decision. Phase 17 must specify its submarine mechanics after spaceship playtests. Phase 18 reevaluates current store requirements and crash-reporting needs without publishing anything.

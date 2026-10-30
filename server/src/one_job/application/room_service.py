@@ -29,12 +29,14 @@ from one_job.protocol.envelopes import (
     EmergencyEventEnvelope,
     ErrorEnvelope,
     GameOverEnvelope,
+    JoinDisplayEnvelope,
     JoinRoomEnvelope,
     LeaveRoomEnvelope,
     PingEnvelope,
     PlayAgainEnvelope,
     PlayerActionEnvelope,
     PlayerReadyEnvelope,
+    PublicStateEnvelope,
     RequestStateEnvelope,
     ResumeSessionEnvelope,
     ReturnToLobbyEnvelope,
@@ -56,6 +58,7 @@ from one_job.protocol.messages import (
     LobbyPlayer,
     LobbyStage,
     LobbyStatePayload,
+    PublicStatePayload,
     SessionAcceptedPayload,
 )
 from one_job.protocol.role_messages import (
@@ -81,6 +84,12 @@ class Member:
     ready: bool = False
 
 
+@dataclass(slots=True)
+class Display:
+    display_id: UUID
+    session: Session = field(repr=False)
+
+
 def start_eligibility(stage: LobbyStage, members: tuple[Member, ...]) -> bool:
     return (
         stage in ("lobby", "finished", "aborted")
@@ -103,6 +112,7 @@ class RoomService:
         self.registry = registry
         self.code = code
         self.members: dict[UUID, Member] = {}
+        self.displays: dict[UUID, Display] = {}
         self.host_id: UUID | None = None
         self.stage: LobbyStage = "lobby"
         self.round: RoundService | None = None
@@ -143,6 +153,11 @@ class RoomService:
                         member.session.disconnect_deadline
                         for member in self.members.values()
                         if member.session.disconnect_deadline is not None
+                    ]
+                    + [
+                        display.session.disconnect_deadline
+                        for display in self.displays.values()
+                        if display.session.disconnect_deadline is not None
                     ]
                 )
                 incoming = asyncio.create_task(
@@ -226,6 +241,11 @@ class RoomService:
                     if assignments:
                         member.session.peer.offer(self.assignment(member.player_id))
                     member.session.peer.offer(self.role_state(member.player_id))
+        for display in self.displays.values():
+            if display.session.peer is not None:
+                if include_lobby:
+                    display.session.peer.offer(message)
+                display.session.peer.offer(self.public_state())
         if self.round is not None and self.round.terminal and not self.round.result_announced:
             result = public_view(self.round.engine.snapshot()).result
             assert result is not None
@@ -269,10 +289,15 @@ class RoomService:
         return False
 
     def _discard_round_views(self) -> None:
-        for member in self.members.values():
-            for request_id, cached in tuple(member.session.replies.items()):
-                if isinstance(cached.reply, RoleStateEnvelope):
-                    del member.session.replies[request_id]
+        for session in self.all_sessions():
+            for request_id, cached in tuple(session.replies.items()):
+                if isinstance(cached.reply, (RoleStateEnvelope, PublicStateEnvelope)):
+                    del session.replies[request_id]
+
+    def all_sessions(self) -> tuple[Session, ...]:
+        return tuple(m.session for m in self.members.values()) + tuple(
+            d.session for d in self.displays.values()
+        )
 
     def advance(self) -> None:
         if self.round is None:
@@ -315,6 +340,17 @@ class RoomService:
             payload=self.round.view(PlayerId(player_id), self.registry.clock.now()),
         )
 
+    def public_state(self, reply_to: str | None = None) -> PublicStateEnvelope:
+        return PublicStateEnvelope(
+            reply_to=reply_to,
+            room_revision=self.revision,
+            payload=PublicStatePayload(
+                public=(
+                    public_view(self.round.engine.snapshot()) if self.round is not None else None
+                )
+            ),
+        )
+
     def admission(self, member: Member, message: ClientMessage) -> AdmissionReceipt:
         return AdmissionReceipt(self.code, member.player_id, message.request_id, self.revision)
 
@@ -325,7 +361,8 @@ class RoomService:
                 receipt.revision,
                 SessionAcceptedPayload(
                     room_code=receipt.room_code,
-                    player_id=str(receipt.player_id),
+                    player_id=str(receipt.player_id) if receipt.kind == "player" else None,
+                    kind=receipt.kind,
                     resume_token=self.registry.issuer.token(receipt.player_id),
                 ),
             )
@@ -371,6 +408,8 @@ class RoomService:
     def resume(
         self, player_id: UUID, peer: Peer, message: ResumeSessionEnvelope, digest: bytes
     ) -> ErrorCode | None:
+        if player_id in self.displays:
+            return self.resume_display(player_id, peer, message, digest)
         member = self.members.get(player_id)
         if member is None or not hmac.compare_digest(member.session.digest, digest):
             peer.finish(error_message(ErrorCode.SESSION_EXPIRED, message.request_id), 1008)
@@ -426,6 +465,8 @@ class RoomService:
         return True
 
     def command(self, player_id: UUID, peer: Peer, message: ClientMessage) -> ErrorCode | None:
+        if player_id in self.displays:
+            return self.display_command(player_id, peer, message)
         member = self.members.get(player_id)
         if (
             member is None
@@ -593,6 +634,16 @@ class RoomService:
         return code
 
     def disconnect(self, player_id: UUID, peer: Peer) -> None:
+        display = self.displays.get(player_id)
+        if display is not None:
+            if display.session.peer is peer and display.session.generation == peer.generation:
+                self.registry.unbind(peer)
+                display.session.peer = None
+                display.session.generation = None
+                display.session.disconnect_deadline = (
+                    self.registry.clock.now() + self.registry.settings.disconnect_grace
+                )
+            return
         member = self.members.get(player_id)
         if (
             member is None
@@ -620,6 +671,10 @@ class RoomService:
 
     def expire(self) -> None:
         now = self.registry.clock.now()
+        for display in tuple(self.displays.values()):
+            deadline = display.session.disconnect_deadline
+            if deadline is not None and deadline <= now:
+                self._remove_display(display)
         if now >= self.idle_deadline:
             for member in self.members.values():
                 if member.session.peer is not None:
@@ -656,16 +711,132 @@ class RoomService:
         else:
             self.delete()
 
-    def delete(self) -> None:
+    def delete(self, close_displays: bool = True) -> None:
         if self._closed:
             return
         self._closed = True
+        for display in tuple(self.displays.values()):
+            if close_displays and display.session.peer is not None:
+                display.session.peer.finish(
+                    error_message(ErrorCode.SESSION_EXPIRED, room_revision=self.revision), 1008
+                )
+            self._remove_display(display)
         for member in tuple(self.members.values()):
             self._remove(member)
         self.registry.forget_room(self)
 
     def shutdown(self) -> None:
-        for member in self.members.values():
-            if member.session.peer is not None:
-                member.session.peer.request_close(1001)
-        self.delete()
+        for session in self.all_sessions():
+            if session.peer is not None:
+                session.peer.request_close(1001)
+        self.delete(close_displays=False)
+
+    def join_display(self, peer: Peer, message: JoinDisplayEnvelope) -> ErrorCode | None:
+        if len(self.displays) >= 2:
+            return self.registry.reject(peer, message, ErrorCode.DISPLAY_FULL)
+        identity = self.registry.new_id()
+        if identity is None:
+            return self.registry.reject(peer, message, ErrorCode.CAPACITY)
+        if not peer.admit():
+            peer.finish(error_message(ErrorCode.NOT_AUTHENTICATED, message.request_id), 1008)
+            return ErrorCode.NOT_AUTHENTICATED
+        digest = token_digest(self.registry.issuer.token(identity))
+        display = Display(identity, Session(digest, peer, peer.generation))
+        self.displays[identity] = display
+        self.registry.bind(self, identity, digest, peer)
+        receipt = AdmissionReceipt(
+            self.code, identity, message.request_id, self.revision, "display"
+        )
+        display.session.remember(message, receipt, self.registry.clock.now())
+        peer.offer(self.materialize(receipt))
+        self.display_snapshots(peer)
+        return None
+
+    def display_snapshots(self, peer: Peer) -> None:
+        peer.offer(lobby_state(self.view(), self.revision))
+        peer.offer(self.public_state())
+
+    def resume_display(
+        self, identity: UUID, peer: Peer, message: ResumeSessionEnvelope, digest: bytes
+    ) -> ErrorCode | None:
+        display = self.displays[identity]
+        session = display.session
+        if not hmac.compare_digest(session.digest, digest):
+            peer.finish(error_message(ErrorCode.SESSION_EXPIRED, message.request_id), 1008)
+            return ErrorCode.SESSION_EXPIRED
+        now = self.registry.clock.now()
+        session.prune(now)
+        cached = session.replies.get(message.request_id)
+        if cached is not None and not hmac.compare_digest(
+            cached.signature, command_signature(message)
+        ):
+            return self.error(peer, message, ErrorCode.REQUEST_ID_CONFLICT)
+        if cached is not None and not isinstance(cached.reply, AdmissionReceipt):
+            peer.offer(self.materialize(cached.reply))
+            return cached.reply.payload.code if isinstance(cached.reply, ErrorEnvelope) else None
+        if not peer.admit():
+            peer.finish(error_message(ErrorCode.NOT_AUTHENTICATED, message.request_id), 1008)
+            return ErrorCode.NOT_AUTHENTICATED
+        old = session.peer
+        if old is not None:
+            self.registry.unbind(old)
+        session.peer, session.generation, session.disconnect_deadline = peer, peer.generation, None
+        self.registry.bind(self, identity, digest, peer)
+        if old is not None and old is not peer:
+            old.request_close(1008)
+        receipt = (
+            cached.reply
+            if cached is not None
+            else AdmissionReceipt(self.code, identity, message.request_id, self.revision, "display")
+        )
+        if cached is None:
+            session.remember(message, receipt, now)
+        peer.offer(self.materialize(receipt))
+        self.display_snapshots(peer)
+        return None
+
+    def display_command(
+        self, identity: UUID, peer: Peer, message: ClientMessage
+    ) -> ErrorCode | None:
+        display = self.displays[identity]
+        session = display.session
+        if session.peer is not peer or session.generation != peer.generation:
+            peer.finish(error_message(ErrorCode.SESSION_EXPIRED, message.request_id), 1008)
+            return ErrorCode.SESSION_EXPIRED
+        if not peer.active:
+            return ErrorCode.SESSION_EXPIRED
+        if isinstance(message, ResumeSessionEnvelope):
+            return self.resume_display(
+                identity, peer, message, token_digest(message.payload.resume_token)
+            )
+        now = self.registry.clock.now()
+        session.prune(now)
+        cached = session.replies.get(message.request_id)
+        if cached is not None:
+            if not hmac.compare_digest(cached.signature, command_signature(message)):
+                return self.error(peer, message, ErrorCode.REQUEST_ID_CONFLICT)
+            peer.offer(self.materialize(cached.reply))
+            return cached.reply.payload.code if isinstance(cached.reply, ErrorEnvelope) else None
+        code = None
+        if isinstance(message, PingEnvelope):
+            reply: ReplayReply = pong(message).model_copy(update={"room_revision": self.revision})
+        elif isinstance(message, RequestStateEnvelope):
+            peer.offer(lobby_state(self.view(), self.revision))
+            reply = self.public_state(message.request_id)
+        elif isinstance(message, LeaveRoomEnvelope):
+            self._remove_display(display)
+            peer.finish(ack(message.request_id, self.revision, "leave_room"), 1000)
+            return None
+        else:
+            code = ErrorCode.NOT_CONTROLLER
+            reply = error_message(code, message.request_id, self.revision)
+        session.remember(message, reply, now)
+        peer.offer(self.materialize(reply))
+        return code
+
+    def _remove_display(self, display: Display) -> None:
+        self.registry.forget_member(
+            display.session.digest, display.display_id, display.session.peer
+        )
+        display.session.replies.clear()
+        del self.displays[display.display_id]

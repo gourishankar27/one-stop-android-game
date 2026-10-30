@@ -13,6 +13,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class NoncePayload(val nonce: String)
 @Serializable data class NamePayload(val name: String)
 @Serializable data class JoinPayload(val room_code: String, val name: String)
+@Serializable data class DisplayJoinPayload(val room_code: String)
 @Serializable data class ReadyPayload(val ready: Boolean)
 @Serializable class EmptyPayload
 @Serializable data class ResumePayload(val resume_token: String) {
@@ -30,6 +31,8 @@ sealed class ClientMessage {
     data class Create(override val request_id: String, val payload: NamePayload) : ClientMessage()
     @Serializable @SerialName("join_room")
     data class Join(override val request_id: String, val payload: JoinPayload) : ClientMessage()
+    @Serializable @SerialName("join_display")
+    data class JoinDisplay(override val request_id: String, val payload: DisplayJoinPayload) : ClientMessage()
     @Serializable @SerialName("resume_session")
     data class Resume(override val request_id: String, val payload: ResumePayload) : ClientMessage()
     @Serializable @SerialName("player_ready")
@@ -70,7 +73,7 @@ sealed class ClientMessage {
 }
 
 @Serializable data class SessionPayload(
-    val room_code: String, val kind: String, val player_id: String, val resume_token: String,
+    val room_code: String, val kind: String, val player_id: String?, val resume_token: String,
 ) { override fun toString() = "SessionPayload(redacted)" }
 @Serializable data class AckPayload(val operation: String, val client_action_seq: Long? = null, val applied_tick: Long? = null)
 @Serializable data class ErrorPayload(val code: String, val message: String, val retryable: Boolean) {
@@ -84,7 +87,7 @@ sealed class ClientMessage {
     val room_code: String, val stage: String, val host_player_id: String?,
     val players: List<LobbyPlayer>, val can_start: Boolean,
 )
-@Serializable data class PublicPayload(val public: PublicRound)
+@Serializable data class PublicPayload(val public: PublicRound?)
 @Serializable data class PublicRound(
     val round_id: String, val stage: String, val tick_index: Long, val remaining_ms: Long,
     val countdown_remaining_ms: Long?, val paused_from: String?, val hull_percent: Int,

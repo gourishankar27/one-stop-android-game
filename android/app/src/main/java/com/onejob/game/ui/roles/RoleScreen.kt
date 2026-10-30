@@ -18,6 +18,7 @@ import com.onejob.game.data.protocol.StationRole
 import com.onejob.game.ui.ShellPage
 import com.onejob.game.ui.connection.ConnectionFeedback
 import com.onejob.game.ui.lobby.LobbyFeedbackText
+import com.onejob.game.ui.theme.RoleIdentity
 
 @Composable
 fun RoleScreen(state: RoleUiState, confirmLeave: Boolean, onSelect: (StationRole) -> Unit,
@@ -38,6 +39,7 @@ fun RoleScreen(state: RoleUiState, confirmLeave: Boolean, onSelect: (StationRole
                 }
             }
             val instruction = state.instructions.first { it.role == state.selected }
+            RoleIdentity(instruction.role)
             Text(instruction.title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.testTag("stationTitle"))
             for (step in instruction.steps) Text(step)
             Button(onClick = onRead, enabled = state.canRead, modifier = Modifier.fillMaxWidth().testTag("readStation")) {

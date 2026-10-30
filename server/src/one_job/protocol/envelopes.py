@@ -2,7 +2,7 @@
 
 import json
 import math
-from typing import Annotated, Literal, get_args
+from typing import Annotated, Literal
 
 from pydantic import Field, JsonValue, RootModel, StrictInt, StrictStr, TypeAdapter, ValidationError
 
@@ -15,6 +15,7 @@ from one_job.protocol.messages import (
     EmptyPayload,
     ErrorCode,
     ErrorPayload,
+    JoinDisplayPayload,
     JoinRoomPayload,
     LobbyStatePayload,
     NonnegativeInt,
@@ -38,12 +39,13 @@ from one_job.protocol.role_messages import (
 
 MAX_FRAME_BYTES = 16 * 1024
 ReservedType = Literal["join_display",]
-RESERVED_TYPES = frozenset(get_args(ReservedType))
+RESERVED_TYPES: frozenset[str] = frozenset()
 ROUND_TYPES = frozenset({"briefing_ready", "player_action", "play_again", "return_to_lobby"})
 LOBBY_TYPES = frozenset(
     {
         "create_room",
         "join_room",
+        "join_display",
         "resume_session",
         "leave_room",
         "player_ready",
@@ -86,6 +88,13 @@ class JoinRoomEnvelope(DTO):
     type: Literal["join_room"]
     request_id: RequestId
     payload: JoinRoomPayload
+
+
+class JoinDisplayEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["join_display"]
+    request_id: RequestId
+    payload: JoinDisplayPayload
 
 
 class ResumeSessionEnvelope(DTO):
@@ -154,6 +163,7 @@ class ReturnToLobbyEnvelope(DTO):
 type LobbyMessage = (
     CreateRoomEnvelope
     | JoinRoomEnvelope
+    | JoinDisplayEnvelope
     | ResumeSessionEnvelope
     | LeaveRoomEnvelope
     | PlayerReadyEnvelope
@@ -162,7 +172,6 @@ type LobbyMessage = (
 )
 type ClientMessage = Annotated[
     PingEnvelope
-    | ReservedEnvelope
     | LobbyMessage
     | BriefingReadyEnvelope
     | PlayerActionEnvelope
@@ -228,7 +237,7 @@ class LobbyStateEnvelope(DTO):
 
 
 class PublicStateEnvelope(DTO):
-    """Reserved DTO used by adapter/outbox tests, never emitted by Phase 03 /ws."""
+    """Independently allowlisted observer state; null public means no lobby round."""
 
     version: Literal[1] = 1
     type: Literal["public_state"] = "public_state"

@@ -15,6 +15,10 @@ Phase 10 emergency rules, seeded integration, device warning evidence and any
 remaining gates live in [EMERGENCY_VALIDATION.md](EMERGENCY_VALIDATION.md).
 Phase 11 countdown, snapshot Results, repeated rematches and deferred phone gates
 are recorded in [ROUND_LIFECYCLE_VALIDATION.md](ROUND_LIFECYCLE_VALIDATION.md).
+Phase 12 observer permission/privacy, separate admission/recovery and public-only
+Android evidence is in [PUBLIC_DISPLAY_VALIDATION.md](PUBLIC_DISPLAY_VALIDATION.md).
+Phase 13 local feedback/preferences/accessibility evidence and deferred physical
+listening/TalkBack/group checks are in [FEEDBACK_VALIDATION.md](FEEDBACK_VALIDATION.md).
 This document defines the commands and behavior each layer must verify as it is
 implemented.
 
@@ -312,6 +316,50 @@ Exact commands/configuration, initial resolved failures and remaining gates are
 in [ROUND_LIFECYCLE_VALIDATION.md](ROUND_LIFECYCLE_VALIDATION.md). Physical-phone
 testing is explicitly deferred; Phase 10's human gate is also pending. The Phase
 11 master-plan checkbox remains open, and the ledger was preserved this phase.
+
+## Phase 12 observed public display checks (2026-10-29)
+
+Repository/static/package checks and 1,080 backend tests passed, including
+observer admission at every stage, secret-sentinel/field absence, every controller
+permission rejection, independent capacity/grace/fencing and unchanged player
+readiness/host/ticks. Android debug/lint/release checks and 76 JVM tests passed.
+All 31 instrumented tests passed on each of three API 37 emulators; four display
+cases then passed on the final tablet-sized/font-1.5 layout (97 executions total).
+
+Real 2/3-player-plus-two-display sockets passed allowlists, crafted command denial,
+running admission, unpaused display reconnect, warnings and matching results.
+Normal UI used two emulator players plus a public display in lobby/running;
+display leave kept player time advancing, warnings and final counts matched, and
+portrait/landscape tablet screenshots were inspected. Physical-device viewing/
+disconnect verification remains deferred; earlier Phase 10/11 gates remain open.
+See [PUBLIC_DISPLAY_VALIDATION.md](PUBLIC_DISPLAY_VALIDATION.md) for exact commands,
+configuration, outcomes, initial fixes and remaining manual gates. Phase 12 stays
+unchecked; no progress ledger update is made without all completion evidence.
+
+## Phase 13 observed feedback checks (2026-10-29)
+
+Repository/static/package checks, 1,080 backend regressions and 89 JVM tests
+passed. All 35 instrumented tests passed on each of three API 37 emulators;
+the four feedback cases also passed with font scale 2.0/dark mode (109 executions
+total, no skips/failures). Generated short PCM assets decoded natively; settings
+labels/48dp targets, three-boolean persistence, role headings/text redundancy,
+muted warning visibility, cue deduplication/rate limits and lifecycle suppression
+were checked. Final lint has 0 errors and 14 retained warnings.
+
+Ordinary three-emulator UI confirmed process-restart preference persistence,
+large-text controls, accepted/rejected text, essential warnings with effects off
+and current server state after background/resume. A local script's default-file
+assumption was corrected with an explicit follow-up; it is not presented as an
+uninterrupted successful run. TalkBack activation encountered its permission
+screen and was restored, so spoken/traversal behavior remains unverified.
+
+Physical sound/haptics, current-phone readability, TalkBack and friends-in-room
+voice audibility remain required manual gates. No human observations or audio
+quality pass is inferred from muted emulators or fake sinks. Exact commands,
+baseline review, profiles, limitations and asset validation are in
+[FEEDBACK_VALIDATION.md](FEEDBACK_VALIDATION.md), with source provenance in
+[ASSET_ATTRIBUTION.md](ASSET_ATTRIBUTION.md). Phase 13 stays unchecked; the master
+ledger remains unchanged and earlier deferred gates remain open.
 
 ## Manual playtests (15)
 

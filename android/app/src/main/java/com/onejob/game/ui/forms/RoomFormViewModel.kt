@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-enum class FormKind { CREATE, JOIN }
+enum class FormKind { CREATE, JOIN, DISPLAY }
 
 data class RoomFormUiState(
     val name: String = "",
@@ -70,7 +70,11 @@ class RoomFormViewModel(
         feedback = null
         refresh()
         submission = viewModelScope.launch {
-            val result = if (kind == FormKind.CREATE) repository.create(submittedName) else repository.join(submittedCode, submittedName)
+            val result = when (kind) {
+                FormKind.CREATE -> repository.create(submittedName)
+                FormKind.JOIN -> repository.join(submittedCode, submittedName)
+                FormKind.DISPLAY -> repository.joinDisplay(submittedCode)
+            }
             feedback = result.feedback()
             pending = false
             refresh()
@@ -103,8 +107,8 @@ class RoomFormViewModel(
     private fun refresh() { _ui.value = render() }
     private fun render() = RoomFormUiState(
         name.value, roomCode.value, checked.value,
-        if (checked.value) DraftValidation.name(name.value) else null,
-        if (checked.value && kind == FormKind.JOIN) DraftValidation.roomCode(roomCode.value) else null,
+        if (checked.value && kind != FormKind.DISPLAY) DraftValidation.name(name.value) else null,
+        if (checked.value && kind != FormKind.CREATE) DraftValidation.roomCode(roomCode.value) else null,
         repository.connection.value, pending, repository.session.value.identity != null && !exiting,
         exiting, exited, feedback,
     )

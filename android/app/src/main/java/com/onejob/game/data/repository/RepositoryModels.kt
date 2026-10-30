@@ -8,14 +8,14 @@ import com.onejob.game.data.protocol.RoleAssignedPayload
 import com.onejob.game.data.protocol.RoleStatePayload
 import com.onejob.game.data.protocol.EmergencyEventPayload
 
-enum class Operation { CONNECT, PING, CREATE, JOIN, RESUME, READY, START, STATE, LEAVE, ACTION, BRIEFING, PLAY_AGAIN, RETURN_TO_LOBBY }
+enum class Operation { CONNECT, PING, CREATE, JOIN, JOIN_DISPLAY, RESUME, READY, START, STATE, LEAVE, ACTION, BRIEFING, PLAY_AGAIN, RETURN_TO_LOBBY }
 enum class ConnectionProblem {
     CONFIGURATION, NETWORK, BACKPRESSURE, COMMAND_UNCERTAIN, HEARTBEAT_TIMEOUT,
     PROTOCOL, UNSUPPORTED_VERSION, RECONNECT_EXHAUSTED, ADMISSION_REQUIRED, SNAPSHOT_TIMEOUT,
 }
 enum class RemoteCode {
     INVALID_MESSAGE, UNSUPPORTED_VERSION, UNKNOWN_TYPE, NOT_AUTHENTICATED, ROOM_NOT_FOUND,
-    ROOM_FULL, ROOM_STARTED, CAPACITY, NOT_HOST, NOT_READY, INVALID_STAGE, INVALID_ACTION,
+    ROOM_FULL, DISPLAY_FULL, NOT_CONTROLLER, ROOM_STARTED, CAPACITY, NOT_HOST, NOT_READY, INVALID_STAGE, INVALID_ACTION,
     NOT_ROLE_OWNER, INSUFFICIENT_POWER, COOLDOWN, STALE_ROUND, STALE_ACTION,
     REQUEST_ID_CONFLICT, RATE_LIMITED, SESSION_EXPIRED, FEATURE_UNAVAILABLE, INTERNAL_ERROR, UNKNOWN;
 
@@ -29,7 +29,9 @@ data class ConnectionState(
     val problem: ConnectionProblem? = null,
     val retryAttempt: Int = 0,
 )
-data class SessionIdentity(val roomCode: String, val playerId: String)
+data class SessionIdentity(val roomCode: String, val playerId: String?, val kind: String = "player")
+/** Local receipt of a validated, correlated server reply; no replay or game authority. */
+data class ActionReceipt(val roundId: String, val sequence: Long, val accepted: Boolean)
 data class SessionState(
     val identity: SessionIdentity? = null,
     val lobby: LobbyPayload? = null,
@@ -37,6 +39,7 @@ data class SessionState(
     val assigned: RoleAssignedPayload? = null,
     val roleState: RoleStatePayload? = null,
     val emergencyEvent: EmergencyEventPayload? = null,
+    val publicSnapshotReceived: Boolean = false,
 )
 
 sealed interface CommandResult {

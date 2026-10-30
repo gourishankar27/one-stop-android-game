@@ -8,9 +8,23 @@ import org.junit.Test
 class ProtocolCodecTest {
     private val codec = ProtocolCodec()
 
+    @Test fun displayIdentityKindMustMatchNullablePlayerId() {
+        val valid="""{"version":1,"type":"session_accepted","reply_to":"display","room_revision":1,"payload":{"room_code":"ABCD23","kind":"display","player_id":null,"resume_token":"synthetic"}}"""
+        assertTrue(codec.decode(valid) is DecodedFrame.Message)
+        for(invalid in listOf(valid.replace("\"kind\":\"display\"","\"kind\":\"player\""),
+            valid.replace("\"player_id\":null","\"player_id\":\"00000000-0000-0000-0000-000000000001\""),
+            valid.replace("\"kind\":\"display\"","\"kind\":\"other\"")))
+            assertTrue(codec.decode(invalid) is DecodedFrame.Invalid)
+    }
+    @Test fun publicLobbyRequiresExplicitNullView() {
+        val valid="""{"version":1,"type":"public_state","reply_to":"state","room_revision":1,"payload":{"public":null}}"""
+        assertTrue(codec.decode(valid) is DecodedFrame.Message)
+        assertTrue(codec.decode(valid.replace("\"public\":null","")) is DecodedFrame.Invalid)
+    }
+
     @Test
     fun sharedPythonFixturesDecodeAndOutgoingMessagesMatchExactly() {
-        for (file in listOf("phase03.json", "phase04.json", "phase06.json", "phase08.json", "phase09.json", "phase10.json", "phase11.json")) {
+        for (file in listOf("phase03.json", "phase04.json", "phase06.json", "phase08.json", "phase09.json", "phase10.json", "phase11.json", "phase12.json")) {
             val text = javaClass.classLoader!!.getResourceAsStream(file)!!.bufferedReader().use { it.readText() }
             for (element in codec.json.parseToJsonElement(text).jsonArray) {
                 val request = element.jsonObject.getValue("request")

@@ -4,6 +4,8 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -22,8 +24,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.platform.testTag
+import com.onejob.game.ui.settings.LocalOpenFeedbackSettings
 import com.onejob.game.R
 import com.onejob.game.navigation.AppDestination
 
@@ -32,6 +38,7 @@ import com.onejob.game.navigation.AppDestination
 fun ShellPage(
     @StringRes title: Int,
     onBack: (() -> Unit)? = null,
+    maxContentWidth: Dp = 600.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Scaffold { insets ->
@@ -41,13 +48,16 @@ fun ShellPage(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(
-                modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
+                modifier = Modifier.widthIn(max = maxContentWidth).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                if (onBack != null) {
-                    TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
+                val openSettings = LocalOpenFeedbackSettings.current
+                if (onBack != null || openSettings != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    if (onBack != null) TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
+                    if (openSettings != null) TextButton(onClick = openSettings,
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("feedbackSettings")) { Text(stringResource(R.string.feedback_settings_title)) }
                 }
-                Text(stringResource(title), style = MaterialTheme.typography.headlineLarge)
+                Text(stringResource(title), style = MaterialTheme.typography.headlineLarge, modifier = Modifier.semantics { heading() })
                 content()
             }
         }
@@ -69,6 +79,9 @@ fun ShellHome(
         }
         Button(onClick = { onNavigate(AppDestination.JOIN) }, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.join_setup))
+        }
+        OutlinedButton(onClick = { onNavigate(AppDestination.DISPLAY_JOIN) }, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.display_join_title))
         }
     }
 }

@@ -27,6 +27,7 @@ class LobbyTestRepository : GameRepository by UnavailableGameRepository() {
     var readyResult = CompletableDeferred<CommandResult>().apply { complete(CommandResult.Accepted("ready", Operation.READY)) }
     override suspend fun create(name: String): CommandResult { admissionCalls++; submittedName = name; return admission.await() }
     override suspend fun join(roomCode: String, name: String): CommandResult { submittedCode = roomCode; return create(name) }
+    override suspend fun joinDisplay(roomCode: String): CommandResult { submittedCode = roomCode; return create("") }
     override suspend fun setReady(ready: Boolean): CommandResult { this.ready += ready; return readyResult.await() }
     override suspend fun start(): CommandResult { starts++; return CommandResult.Rejected("start", RemoteCode.FEATURE_UNAVAILABLE) }
     override suspend fun playAgain(): CommandResult { playAgains++; return lifecycleResult.await() }

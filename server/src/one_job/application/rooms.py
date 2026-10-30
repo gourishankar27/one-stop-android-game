@@ -14,6 +14,7 @@ from one_job.domain.config import GameConfig
 from one_job.protocol.envelopes import (
     ClientMessage,
     CreateRoomEnvelope,
+    JoinDisplayEnvelope,
     JoinRoomEnvelope,
     PingEnvelope,
     ReservedEnvelope,
@@ -137,7 +138,10 @@ class RoomRegistry:
             return None
         if isinstance(message, ReservedEnvelope):
             return self.reject(peer, message, ErrorCode.FEATURE_UNAVAILABLE)
-        if not isinstance(message, (CreateRoomEnvelope, JoinRoomEnvelope, ResumeSessionEnvelope)):
+        if not isinstance(
+            message,
+            (CreateRoomEnvelope, JoinRoomEnvelope, JoinDisplayEnvelope, ResumeSessionEnvelope),
+        ):
             return self.reject(peer, message, ErrorCode.NOT_AUTHENTICATED)
         async with self._admission_lock:
             if not peer.active or self._stopping:
@@ -162,13 +166,17 @@ class RoomRegistry:
                 task.add_done_callback(self._tasks.discard)
                 result = await room.submit(lambda: room.join(peer, message, message.payload.name))
                 return result
-            if isinstance(message, JoinRoomEnvelope):
+            if isinstance(message, (JoinRoomEnvelope, JoinDisplayEnvelope)):
                 joined_room = self._rooms.get(message.payload.room_code)
                 if joined_room is None:
                     return self.reject(peer, message, ErrorCode.ROOM_NOT_FOUND)
                 try:
                     return await joined_room.submit(
-                        lambda: joined_room.join(peer, message, message.payload.name)
+                        lambda: (
+                            joined_room.join_display(peer, message)
+                            if isinstance(message, JoinDisplayEnvelope)
+                            else joined_room.join(peer, message, message.payload.name)
+                        )
                     )
                 except RoomClosed:
                     return self.reject(peer, message, ErrorCode.ROOM_NOT_FOUND)

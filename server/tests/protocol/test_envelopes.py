@@ -6,7 +6,6 @@ from pydantic import ValidationError
 
 from one_job.protocol.envelopes import (
     MAX_FRAME_BYTES,
-    RESERVED_TYPES,
     FrameError,
     encode_message,
     error_message,
@@ -34,12 +33,9 @@ def test_ping_pong_exact_contract():
     }
 
 
-@pytest.mark.parametrize("kind", sorted(RESERVED_TYPES))
-def test_reserved_payload_is_not_business_decoded(kind):
+def test_display_payload_is_business_decoded():
     payload = {"future_unknown": [None, True, 1, {"resume_token": "PRIVATE_SENTINEL"}]}
-    parsed = parse_text(json.dumps(frame(kind, payload=payload)))
-    assert parsed.type == kind
-    assert parsed.payload == payload
+    assert failure(frame("join_display", payload=payload)).code == ErrorCode.INVALID_MESSAGE
 
 
 @pytest.mark.parametrize("key", ["version", "type", "request_id", "payload"])
@@ -146,13 +142,11 @@ def test_deep_invalid_root_is_bounded_and_redacted():
 
 
 def test_utf8_byte_limit_exact_boundary():
-    value = frame("join_display", payload={"padding": ""})
-    baseline = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-    value["payload"]["padding"] = "é" * ((MAX_FRAME_BYTES - len(baseline)) // 2)
+    value = frame("ping", payload={"nonce": "é" * 64})
     text = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
     text += " " * (MAX_FRAME_BYTES - len(text.encode("utf-8")))
     assert len(text.encode("utf-8")) == MAX_FRAME_BYTES
-    assert parse_text(text).type == "join_display"
+    assert parse_text(text).type == "ping"
     with pytest.raises(FrameError) as caught:
         parse_text(text + " ")
     assert caught.value.close_code == 1009

@@ -3,15 +3,17 @@
 Phase 07 binds usable create/join/lobby screens to the Phase 06 repository.
 Phase 08 adds private server-assigned briefing; Phase 09 adds live owned control
 panels. Phase 11 adds authoritative countdown, Results and host rematch/lobby return.
+Phase 12 adds optional code-only Join display and public lobby/game/results.
+Phase 13 adds optional foreground feedback, local settings and restrained role identity.
 Use Material 3 and ordinary phone layouts before final visual design. A portrait
 layout is the first target; preserve state on rotation and do not lock orientation
 as a substitute for lifecycle handling.
 
 ## Navigation
 
-### Current Phase 11 control flow
+### Current Phase 13 control flow
 
-Home opens Create/Join. Forms validate
+Home opens Create/Join, Join display or local feedback settings. Forms validate
 name/code hints, normalize the submitted values and call the shared repository.
 Only a server-admitted identity opens Lobby. Rejected requests retain typed inputs;
 pending requests disable repeated submission. An uncertain admission shows that
@@ -31,6 +33,9 @@ remains available. Normal forms now exercise the real admission flow.
 | Countdown | Server-provided 3/2/1, owned station titles, pause/recovery, confirmed Leave; no controls or local timer |
 | Gameplay | Server time/hull/shield strip, owned Pilot/Engineer/Shields controls, typed action feedback and pause/recovery |
 | Results | Stable outcome/reason/survival/hull/event counts/frozen crew, current readiness, host Play again/Return to lobby, recovery and confirmed Leave |
+| Join display | Code only, retained validation/errors, explicit uncertainty reset; separate observer admission |
+| Public display | Shared roster/readiness, countdown/time/hull/shield percentages, warning labels and result; Retry/confirmed Leave only |
+| Feedback settings | Device-local sound/haptic toggles and reduced motion; no game command or session data persisted |
 
 Create/Join have separate navigation-entry ViewModels. Name/code/check state is
 saved through `SavedStateHandle` and survives activity recreation/rotation. Popping
@@ -162,7 +167,7 @@ Those membership dialogs apply to the live lobby, not the session-free previews.
 | Results (11) | Team outcome, survival time, resolved/failed count | All ready explicitly; host Play again / Return to lobby; confirmed Leave |
 | Reconnecting (06/14) | Connection state, grace explanation, Retry / Leave | Disable gameplay controls; do not retain an unsent action queue |
 | Public display (12) | Public timer, hull/shield, warning labels, outcome | No role controls or private instruction data even in hidden widgets |
-| Settings (13+) | Audio, haptics, reduced motion | Local only; persisted preferences cannot affect game rules |
+| Feedback settings (13) | Sound effects, haptics, reduced motion | Sound/haptics off and reduced motion on by default; local booleans only |
 
 ## Rough gameplay layout
 
@@ -181,6 +186,51 @@ replacement for private station information.
 
 ## Interaction and access
 
+The public display uses large type, a centered maximum width of 1000dp and
+scrolling without fixed text heights. Totals stack on narrow screens and use a
+row at 600dp or wider. Rotation remains enabled. It never renders station details,
+role controls or host/ready actions, even as hidden widgets. Display leave states
+that players can continue. Recovery hides stale public data and waits for full
+server synchronization. Phase 13 feedback/settings apply to displays too, using
+only public snapshots. No TV/casting path exists.
+
+## Optional feedback and role presentation (13)
+
+Feedback settings are reachable from the header on Home and all session screens.
+They stay open across server updates and return to the authoritative destination.
+Audio/haptics default off; reduced motion defaults on. Exactly three private
+booleans persist across process restarts, without credentials or round state.
+Settings never send gameplay/room commands or change urgency/deadlines.
+
+Countdown cues follow newly observed server 3/2/1 steps. Action cues require a
+correlated fresh accepted/rejected server reply, not a button tap. Urgency cues
+follow a newly observed emergency ID; simultaneous warnings produce one cue.
+The application-owned mapper retains bounded per-round identity across navigation
+and activity recreation. Initial, reconnect, paused and foreground-resume snapshots
+establish a silent baseline; muted/hidden events are consumed, never replayed.
+The platform sink exists only for a focused, resumed activity and is disabled
+while settings are open. Sound stops on focus loss; no background audio service,
+looping alarm or delayed catch-up playback exists. Maximum three cues per five
+seconds, 350ms global spacing and 1200ms urgency spacing keep feedback restrained.
+System haptic policy, ringer mode and audio focus remain authoritative locally.
+Brief system haptic pulses may finish after focus loss; no new pulse is scheduled.
+
+Each owned role has a P/E/S monogram and explicit Pilot/navigation,
+Engineer/power or Shields/protection label. Light/dark tints have contrast ratios
+11.13, 9.89 and 11.59 respectively; text identifies the role without color.
+Monograms are decorative to accessibility services; role labels and screen titles
+are headings. Body text is 18sp/26sp, with scalable/scrollable layouts. The engine
+output slider has an explicit accessible label; warning/action-result text uses
+polite live regions without announcing a private deadline every tick.
+
+Reduced motion uses instant navigation. When disabled, enter/exit fades are
+120ms/90ms and honor platform animation scaling. There are no flashes or repeating
+animations. Essential countdown/warning/result text remains present with effects
+disabled. Asset provenance is in [ASSET_ATTRIBUTION.md](ASSET_ATTRIBUTION.md);
+observed tests and pending physical/group gates are in
+[FEEDBACK_VALIDATION.md](FEEDBACK_VALIDATION.md). This is functional presentation,
+not final marketing art or a claim of proven party-room audibility.
+
 Use at least 48 dp touch targets, readable type, system insets and high contrast.
 Do not rely solely on color, flashing or sound to convey urgency. Pair role color
 with a text label/icon; support TalkBack names and logical traversal. At large font
@@ -196,5 +246,5 @@ server checks. Settings and menu sounds must not drown out people talking.
 
 Connection overlays distinguish connecting, connected, reconnecting, expired and
 server unavailable. No spin loop without an explanation or exit. Backgrounding
-and rotation should not create duplicate sockets. Future audio/haptics honor
-local settings and pause while the app is not visible.
+and rotation should not create duplicate sockets. Implemented audio/haptics honor
+local settings and suspend output while the app is not visible.

@@ -509,4 +509,76 @@ class SocketGameRepositoryTest {
         assertFalse(gate.accept("another-kind", "ABCD23", null, 2))
         assertTrue(gate.accept("lobby_state", "ABCD23", null, 3))
     }
+
+    @Test fun displayAdmissionBlocksControlIntentsAndNeverStoresPrivateFrames() = runTest {
+        val rig = Rig(this)
+        val join = async { rig.repo.joinDisplay(" abcd23 ") }; runCurrent()
+        rig.socket.open(); runCurrent()
+        val request = rig.socket.sent.single() as ClientMessage.JoinDisplay
+        assertEquals("ABCD23", request.payload.room_code)
+        rig.socket.reply(ServerMessage.SessionAccepted(1,request.request_id,1,SessionPayload("ABCD23","display",null,TOKEN)))
+        rig.socket.reply(rig.lobby())
+        rig.socket.reply(ServerMessage.PublicState(1,null,1,PublicPayload(null))); runCurrent()
+        assertTrue(join.await() is CommandResult.Accepted)
+        assertEquals(SessionIdentity("ABCD23",null,"display"),rig.repo.session.value.identity)
+        assertTrue(rig.repo.session.value.publicSnapshotReceived)
+        val sent = rig.socket.sent.size
+        for (result in listOf(rig.repo.setReady(true),rig.repo.start(),rig.repo.playAgain(),rig.repo.returnToLobby(),
+            rig.repo.acknowledgeBriefing(ROUND),rig.repo.performAction(ROUND,PlayerAction.Coolant))) {
+            assertEquals(RemoteCode.NOT_CONTROLLER,(result as CommandResult.Rejected).code)
+        }
+        assertEquals(sent,rig.socket.sent.size)
+        rig.socket.reply(privateFixture(StationRole.PILOT).first); runCurrent()
+        assertEquals(ConnectionStatus.PROTOCOL_ERROR,rig.repo.connection.value.status)
+        assertNull(rig.repo.session.value.assigned)
+        assertNull(rig.repo.session.value.roleState)
+        rig.repo.closeAndJoin()
+    }
+
+    @Test fun displayRecoveryWaitsForCorrelatedPublicSnapshotAndKeepsKind() = runTest {
+        val rig=Rig(this)
+        val join=async { rig.repo.joinDisplay("ABCD23") };runCurrent();rig.socket.open();runCurrent()
+        val request=rig.socket.sent.single()
+        rig.socket.reply(ServerMessage.SessionAccepted(1,request.request_id,1,SessionPayload("ABCD23","display",null,TOKEN)))
+        rig.socket.reply(rig.lobby());rig.socket.reply(ServerMessage.PublicState(1,null,1,PublicPayload(null)));runCurrent()
+        assertTrue(join.await() is CommandResult.Accepted)
+        rig.socket.fail();runCurrent()
+        assertNull(rig.repo.session.value.publicRound)
+        advanceTimeBy(1000);runCurrent();rig.socket.open();runCurrent()
+        val resume=rig.socket.sent.single() as ClientMessage.Resume
+        assertEquals(TOKEN,resume.payload.resume_token)
+        rig.socket.reply(ServerMessage.SessionAccepted(1,resume.request_id,2,SessionPayload("ABCD23","display",null,TOKEN)));runCurrent()
+        val sync=rig.socket.sent.last() as ClientMessage.State
+        rig.socket.reply(rig.lobby(2));runCurrent()
+        assertEquals(ConnectionStatus.RECONNECTING,rig.repo.connection.value.status)
+        rig.socket.reply(ServerMessage.PublicState(1,sync.request_id,2,PublicPayload(null)));runCurrent()
+        assertEquals(ConnectionStatus.CONNECTED,rig.repo.connection.value.status)
+        assertEquals("display",rig.repo.session.value.identity?.kind)
+        rig.socket.reply(ServerMessage.Error(1,null,2,ErrorPayload("session_expired","safe",false)));runCurrent()
+        assertEquals(ConnectionStatus.SESSION_EXPIRED,rig.repo.connection.value.status)
+        assertNull(rig.repo.session.value.identity)
+        rig.repo.closeAndJoin()
+    }
+
+    @Test fun actionReceiptsAreCorrelatedOneShotAndNotReplayedToNewCollectors() = runTest {
+        val rig=Rig(this);rig.admit()
+        val (assigned,state)=privateFixture(StationRole.PILOT)
+        rig.socket.reply(assigned);rig.socket.reply(state);runCurrent()
+        val received=mutableListOf<ActionReceipt>()
+        val collector=backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {rig.repo.actionReceipts.collect {received+=it}}
+        val accepted=async {rig.repo.performAction(assigned.payload.round_id,PlayerAction.MoveLane(Direction.LEFT))};runCurrent()
+        val request=rig.socket.sent.last() as ClientMessage.Action
+        val ack=ServerMessage.Ack(1,request.request_id,8,AckPayload("player_action",request.payload.client_action_seq,0))
+        rig.socket.reply(ack);runCurrent();assertTrue(accepted.await() is CommandResult.Accepted)
+        rig.socket.reply(ack);runCurrent();assertEquals(1,received.size)
+        val rejected=async {rig.repo.performAction(assigned.payload.round_id,PlayerAction.Evade)};runCurrent()
+        val next=rig.socket.sent.last() as ClientMessage.Action
+        rig.socket.reply(ServerMessage.ActionRejected(1,next.request_id,8,ActionRejectedPayload("cooldown","safe",next.payload.client_action_seq,assigned.payload.round_id)))
+        runCurrent();assertTrue(rejected.await() is CommandResult.Rejected)
+        assertEquals(listOf(true,false),received.map {it.accepted})
+        collector.cancel()
+        val late=mutableListOf<ActionReceipt>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {rig.repo.actionReceipts.collect {late+=it}}
+        runCurrent();assertTrue(late.isEmpty());rig.repo.closeAndJoin()
+    }
 }

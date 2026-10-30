@@ -76,15 +76,14 @@ def test_lobby_and_reserved_operation_sets_do_not_overlap():
     assert LOBBY_TYPES == {
         "create_room",
         "join_room",
+        "join_display",
         "resume_session",
         "leave_room",
         "player_ready",
         "start_game",
         "request_state",
     }
-    assert RESERVED_TYPES == {
-        "join_display",
-    }
+    assert RESERVED_TYPES == set()
     assert not LOBBY_TYPES & RESERVED_TYPES
 
 

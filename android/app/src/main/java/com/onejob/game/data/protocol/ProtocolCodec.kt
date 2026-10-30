@@ -31,6 +31,7 @@ class ProtocolCodec {
             is ClientMessage.Ping -> require(scalarLength(message.payload.nonce) in 1..64)
             is ClientMessage.Create -> require(nameValid(message.payload.name))
             is ClientMessage.Join -> require(nameValid(message.payload.name) && code.matches(message.payload.room_code))
+            is ClientMessage.JoinDisplay -> require(code.matches(message.payload.room_code))
             is ClientMessage.Resume -> require(scalarLength(message.payload.resume_token) in 1..256)
             is ClientMessage.Briefing -> require(uuid.matches(message.payload.round_id))
             is ClientMessage.Action -> {
@@ -81,7 +82,9 @@ class ProtocolCodec {
             is ServerMessage.SessionAccepted -> {
                 val payload = message.payload
                 require(message.reply_to != null && message.room_revision != null)
-                require(payload.kind == "player" && code.matches(payload.room_code) && uuid.matches(payload.player_id))
+                require(code.matches(payload.room_code))
+                require(if (payload.kind == "display") payload.player_id == null
+                    else payload.kind == "player" && payload.player_id?.let { uuid.matches(it) } == true)
                 require(scalarLength(payload.resume_token) in 1..256)
             }
             is ServerMessage.Ack -> {
@@ -106,7 +109,7 @@ class ProtocolCodec {
                 require(ids.toSet().size == ids.size)
                 require(payload.host_player_id == null || payload.host_player_id in ids)
             }
-            is ServerMessage.PublicState -> { require(message.room_revision != null); validatePublic(message.payload.public) }
+            is ServerMessage.PublicState -> { require(message.room_revision != null); message.payload.public?.let(::validatePublic) }
             is ServerMessage.EmergencyEvent -> {
                 require(message.reply_to == null && message.room_revision != null)
                 require(uuid.matches(message.payload.round_id) && message.payload.emergency_id > 0)

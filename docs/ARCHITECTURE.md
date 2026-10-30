@@ -73,8 +73,19 @@ briefing into running. Phase 10 sends shared lifecycle events through the same
 room owner and critical outbox, while targeted snapshots contain only owned
 instructions. `create_app` accepts optional config/seed-factory constructor
 arguments for an explicit local CLI harness, never client-supplied parameters. The current
-public-state DTO prepares coalescing tests, not observer
-admission or public broadcasts.
+public-state DTO now carries independently allowlisted display snapshots.
+
+Phase 12 displays live in a distinct room-owned collection with a maximum of two
+sessions, including disconnect grace. They share credential/replay/generation
+mechanics with players, never player identity/roles/readiness/host permissions.
+The mailbox checks display permissions before player dispatch. Their lifecycle
+does not pause gameplay or modify player readiness/host/room revision/idle time;
+displays cannot keep a controllerless room alive. Room deletion expires them.
+Only public lobby and public round/result DTOs reach a display socket; null public
+state explicitly represents lobby. No full internal/player state is serialized.
+The dedicated Android DisplayViewModel consumes public DTOs only; membership kind
+controls navigation, and the repository rejects both controller intents and
+private inbound messages on that session. See ADR-021 in [DECISIONS.md](DECISIONS.md).
 
 ```mermaid
 flowchart TD
@@ -263,6 +274,27 @@ sequences and queued inputs. See
 [ADR-018](DECISIONS.md#adr-018--core-controls-and-a-mailbox-owned-fixed-step-runner).
 Phase 11 reuses this runner for countdown and retains bounded terminal/replay
 state; lifecycle choices are recorded in ADR-020 in [DECISIONS.md](DECISIONS.md).
+
+## Local feedback (Phase 13)
+
+The Android application owns one FeedbackController and private three-boolean
+FeedbackPreferencesRepository. The activity binds a short-lived platform sink
+only while resumed/focused; a prior activity cannot detach its replacement.
+Settings disable output without altering network membership or the game.
+The pure feedback mapper consumes allowlisted authoritative snapshots and
+correlated local action receipts, not taps or inferred rules. Its round/event/
+countdown/action high-water marks survive activity recreation, remain bounded to
+16 rounds and suppress restored/muted/hidden snapshots. The socket repository
+publishes receipts only after validating a matching reply, with no replay buffer.
+No token, private target or authoritative state is stored as a preference.
+
+SoundPool has one stream, no loops and no deferred sample/focus playback. Generated
+PCM assets are at most 120ms; system View haptics use normal device policy without
+an added vibration permission. Audio focus is released after each short effect
+and stopped on focus loss. Cues have local rate limits; server urgency/timing,
+permissions, simulation and projections are unchanged. See ADR-022 in
+[DECISIONS.md](DECISIONS.md). Phase 14 must include this optional feature when
+testing lifecycle resilience; this phase does not implement its fault matrix.
 
 ## Future scenarios
 

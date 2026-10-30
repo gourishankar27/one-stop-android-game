@@ -20,6 +20,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -65,6 +68,8 @@ class SocketGameRepository(
     private val _connection = MutableStateFlow(ConnectionState())
     private val _status = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     private val _session = MutableStateFlow(SessionState())
+    private val _actionReceipts = MutableSharedFlow<ActionReceipt>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val actionReceipts = _actionReceipts.asSharedFlow()
     override val connection = _connection.asStateFlow()
     override val connectionStatus = _status.asStateFlow()
     override val session = _session.asStateFlow()
@@ -143,6 +148,9 @@ class SocketGameRepository(
     override suspend fun create(name: String): CommandResult = connectedRequest { ClientMessage.Create(it, NamePayload(name.trim())) }
     override suspend fun join(roomCode: String, name: String): CommandResult = connectedRequest {
         ClientMessage.Join(it, JoinPayload(roomCode.trim().uppercase(Locale.ROOT), name.trim()))
+    }
+    override suspend fun joinDisplay(roomCode: String): CommandResult = connectedRequest {
+        ClientMessage.JoinDisplay(it, DisplayJoinPayload(roomCode.trim().uppercase(Locale.ROOT)))
     }
     override suspend fun setReady(ready: Boolean): CommandResult = request { ClientMessage.Ready(it, ReadyPayload(ready)) }
     override suspend fun start(): CommandResult = request { ClientMessage.Start(it) }
@@ -277,9 +285,12 @@ class SocketGameRepository(
             result.complete(CommandResult.NotSent(ConnectionProblem.NETWORK))
             return
         }
-        if (credentials.value == null && message !is ClientMessage.Ping && message !is ClientMessage.Create && message !is ClientMessage.Join) {
+        if (credentials.value == null && message !is ClientMessage.Ping && message !is ClientMessage.Create && message !is ClientMessage.Join && message !is ClientMessage.JoinDisplay) {
             result.complete(CommandResult.NotSent(ConnectionProblem.ADMISSION_REQUIRED))
             return
+        }
+        if (credentials.value?.identity?.kind == "display" && message !is ClientMessage.Ping && message !is ClientMessage.State) {
+            result.complete(CommandResult.Rejected(message.request_id, RemoteCode.NOT_CONTROLLER)); return
         }
         var outgoing = message
         if (message is ClientMessage.Action && message.payload.round_id == _session.value.roleState?.public?.round_id) {
@@ -325,10 +336,19 @@ class SocketGameRepository(
 
     private fun message(message: ServerMessage) {
         val request = message.reply_to?.let { pending[it] }
+        if (credentials.value?.identity?.kind == "display" &&
+            (message is ServerMessage.RoleAssigned || message is ServerMessage.RoleState ||
+                message is ServerMessage.EmergencyEvent || message is ServerMessage.GameOver || message is ServerMessage.ActionRejected)) {
+            protocolFailure(ProtocolIssue.MALFORMED); return
+        }
         when (message) {
             is ServerMessage.SessionAccepted -> {
-                if (request == null || request.operation !in setOf(Operation.CREATE, Operation.JOIN, Operation.RESUME)) return
-                val identity = SessionIdentity(message.payload.room_code, message.payload.player_id)
+                if (request == null || request.operation !in setOf(Operation.CREATE, Operation.JOIN, Operation.JOIN_DISPLAY, Operation.RESUME)) return
+                val identity = SessionIdentity(message.payload.room_code, message.payload.player_id, message.payload.kind)
+                if (request.operation != Operation.RESUME &&
+                    ((request.operation == Operation.JOIN_DISPLAY) != (identity.kind == "display"))) {
+                    protocolFailure(ProtocolIssue.MALFORMED); return
+                }
                 if (request.operation == Operation.RESUME && credentials.value?.identity != identity) {
                     protocolFailure(ProtocolIssue.MALFORMED); return
                 }
@@ -342,7 +362,7 @@ class SocketGameRepository(
             }
             is ServerMessage.Lobby -> {
                 val identity = credentials.value?.identity ?: return
-                if (identity.roomCode != message.payload.room_code || message.payload.players.none { it.player_id == identity.playerId }) {
+                if (identity.roomCode != message.payload.room_code || (identity.kind == "player" && message.payload.players.none { it.player_id == identity.playerId })) {
                     protocolFailure(ProtocolIssue.MALFORMED); return
                 }
                 if (request != null && request.operation != Operation.STATE) { protocolFailure(ProtocolIssue.MALFORMED); return }
@@ -355,7 +375,7 @@ class SocketGameRepository(
                         revisions.retireRound()
                         actionRound = null; actionSequence = 0
                         _session.value = previous.copy(lobby = message.payload, publicRound = null,
-                            assigned = null, roleState = null, emergencyEvent = null)
+                            assigned = null, roleState = null, emergencyEvent = null, publicSnapshotReceived = false)
                     } else _session.value = previous.copy(lobby = message.payload)
                 }
                 if (request != null) {
@@ -368,9 +388,22 @@ class SocketGameRepository(
             }
             is ServerMessage.PublicState -> {
                 val identity = credentials.value?.identity ?: return
+                if (identity.kind != "display" || (request != null && request.operation != Operation.STATE)) {
+                    protocolFailure(ProtocolIssue.MALFORMED); return
+                }
                 val round = message.payload.public
-                if (revisions.accept("public_state", identity.roomCode, round.round_id, message.room_revision!!)) {
-                    _session.value = _session.value.copy(publicRound = round)
+                if (revisions.accept("public_state", identity.roomCode, round?.round_id, message.room_revision!!)) {
+                    if ((_session.value.lobby?.stage == "lobby") != (round == null)) {
+                        protocolFailure(ProtocolIssue.MALFORMED); return
+                    }
+                    _session.value = _session.value.copy(publicRound = round, publicSnapshotReceived = true)
+                }
+                if (request != null) {
+                    if (!_session.value.publicSnapshotReceived || _session.value.lobby == null) {
+                        protocolFailure(ProtocolIssue.MALFORMED); return
+                    }
+                    complete(message, request)
+                    if (request.purpose == Purpose.SYNC) recovered()
                 }
             }
             is ServerMessage.RoleAssigned -> {
@@ -437,6 +470,9 @@ class SocketGameRepository(
                     (request.operation == Operation.ACTION && (message.payload.client_action_seq != request.actionSequence || message.payload.applied_tick == null))) {
                     protocolFailure(ProtocolIssue.MALFORMED); return
                 }
+                if (request.operation == Operation.ACTION) {
+                    _actionReceipts.tryEmit(ActionReceipt(request.actionRound!!, request.actionSequence!!, true))
+                }
                 if (request.purpose == Purpose.LEAVE) { stopTransport(); state(ConnectionStatus.DISCONNECTED) }
                 complete(message, request)
             }
@@ -448,6 +484,7 @@ class SocketGameRepository(
                     protocolFailure(ProtocolIssue.MALFORMED); return
                 }
                 pending.remove(message.reply_to)?.timer?.cancel()
+                _actionReceipts.tryEmit(ActionReceipt(request.actionRound!!, request.actionSequence!!, false))
                 request.result?.complete(CommandResult.Rejected(message.reply_to!!,
                     RemoteCode.fromWire(message.payload.code)))
             }
@@ -498,7 +535,7 @@ class SocketGameRepository(
             request.purpose == Purpose.HEARTBEAT || request.operation == Operation.PING -> lost(ConnectionProblem.HEARTBEAT_TIMEOUT)
             request.purpose == Purpose.RESUME -> lost(ConnectionProblem.NETWORK)
             request.purpose == Purpose.SYNC -> lost(ConnectionProblem.SNAPSHOT_TIMEOUT)
-            request.operation in setOf(Operation.CREATE, Operation.JOIN) -> {
+            request.operation in setOf(Operation.CREATE, Operation.JOIN, Operation.JOIN_DISPLAY) -> {
                 stopTransport(); failPending(); state(ConnectionStatus.UNAVAILABLE, ConnectionProblem.COMMAND_UNCERTAIN)
             }
             else -> { state(ConnectionStatus.CONNECTED, ConnectionProblem.COMMAND_UNCERTAIN); synchronize() }
@@ -588,6 +625,7 @@ class SocketGameRepository(
         is ClientMessage.Ping -> Operation.PING
         is ClientMessage.Create -> Operation.CREATE
         is ClientMessage.Join -> Operation.JOIN
+        is ClientMessage.JoinDisplay -> Operation.JOIN_DISPLAY
         is ClientMessage.Resume -> Operation.RESUME
         is ClientMessage.Ready -> Operation.READY
         is ClientMessage.Start -> Operation.START

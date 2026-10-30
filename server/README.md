@@ -16,7 +16,15 @@ instructions and shared lifecycle labels. Phase 03 adds strict v1
 DTOs, a bounded connection supervisor, redacted logs and a fixture-only engine
 adapter. Phase 08 adds pure seeded assignment, metadata, authenticated ownership
 and allowlisted owned-station projections. See the
-[implemented protocol subset](../docs/NETWORK_PROTOCOL.md#implemented-phase-11-subset).
+[implemented protocol subset](../docs/NETWORK_PROTOCOL.md#implemented-phase-12-subset).
+
+Phase 12 adds two distinct public display sessions per room, code-only admission
+at any stage, public lobby/round/result snapshots and independent credential resume.
+Observers have no controller/host/ready permissions, never pause players and are
+expired when the controller room disappears. Run `uv run python examples/display_smoke.py`
+against the default local seeded harness for real 2/3-player plus two-display
+capacity/privacy/permission/recovery/warning/result checks. Actual evidence and
+deferred device gates: [PUBLIC_DISPLAY_VALIDATION.md](../docs/PUBLIC_DISPLAY_VALIDATION.md).
 
 From this directory:
 

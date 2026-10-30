@@ -26,6 +26,9 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
                   - `RoleUiTest.kt`
                   - `GameplayUiTest.kt`
                   - `LifecycleUiTest.kt`
+                  - `DisplayUiTest.kt`
+                  - `LiveServerDisplayTest.kt`
+                  - `FeedbackSettingsTest.kt`
         - `debug/`
           - `AndroidManifest.xml`
           - `java/com/onejob/game/app/DebugConnectionPanel.kt`
@@ -58,6 +61,11 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
                   - `navigation/`
                     - `AppDestination.kt`
                     - `SessionNavigation.kt`
+                  - `feedback/`
+                    - `FeedbackPreferences.kt`
+                    - `FeedbackEngine.kt`
+                    - `FeedbackController.kt`
+                    - `AndroidFeedback.kt`
                   - `ui/`
                     - `ShellScreens.kt`
                     - `connection/`
@@ -79,9 +87,20 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
                       - `GameplayViewModel.kt`
                     - `lifecycle/`
                       - `LifecycleScreens.kt`
+                    - `display/`
+                      - `DisplayScreen.kt`
+                      - `DisplayViewModel.kt`
                     - `theme/`
                       - `Theme.kt`
+                      - `RoleIdentity.kt`
+                    - `settings/`
+                      - `FeedbackSettingsScreen.kt`
           - `res/`
+            - `raw/`
+              - `feedback_countdown.wav`
+              - `feedback_accepted.wav`
+              - `feedback_rejected.wav`
+              - `feedback_urgent.wav`
             - `values/`
               - `strings.xml`
         - `test/`
@@ -89,6 +108,11 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
             - `MainDispatcherRule.kt`
             - `LobbyTestRepository.kt`
             - `SessionNavigationTest.kt`
+            - `DisplayViewModelTest.kt`
+            - `feedback/`
+              - `FeedbackEngineTest.kt`
+              - `FeedbackControllerTest.kt`
+              - `FeedbackPreferencesTest.kt`
             - `data/`
               - `EndpointTest.kt`
               - `ProtocolCodecTest.kt`
@@ -132,6 +156,9 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
     - `CORE_GAMEPLAY_VALIDATION.md`
     - `EMERGENCY_VALIDATION.md`
     - `ROUND_LIFECYCLE_VALIDATION.md`
+    - `PUBLIC_DISPLAY_VALIDATION.md`
+    - `FEEDBACK_VALIDATION.md`
+    - `ASSET_ATTRIBUTION.md`
     - `protocol-fixtures/`
       - `phase03.json`
       - `phase04.json`
@@ -140,6 +167,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
       - `phase09.json`
       - `phase10.json`
       - `phase11.json`
+      - `phase12.json`
     - `GAME_DESIGN.md`
     - `GAME_STATE.md`
     - `NETWORK_PROTOCOL.md`
@@ -173,6 +201,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
   - `scripts/`
     - `check_repository.py`
     - `dev.py`
+    - `generate_feedback_audio.py`
   - `server/`
     - `.python-version`
     - `README.md`
@@ -187,6 +216,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
       - `emergency_harness.py`
       - `emergency_smoke.py`
       - `round_lifecycle_smoke.py`
+      - `display_smoke.py`
     - `src/`
       - `one_job/`
         - `__init__.py`
@@ -239,6 +269,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
         - `test_briefing_rounds.py`
         - `test_room_runner.py`
         - `test_round_lifecycle.py`
+        - `test_displays.py`
         - `test_emergency_rooms.py`
         - `test_connections.py`
         - `test_engine_adapter.py`
@@ -251,6 +282,7 @@ Source-only handoff. Installed dependencies, build outputs, caches and local git
         - `test_gameplay_messages.py`
         - `test_emergency_messages.py`
         - `test_lifecycle_messages.py`
+        - `test_display_messages.py`
       - `domain/`
         - `conftest.py`
         - `test_actions.py`

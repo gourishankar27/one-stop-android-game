@@ -14,6 +14,26 @@ Eligible host Start enters briefing; all acknowledgements start a 3-second serve
 countdown before running.
 There are no Android gameplay rules.
 
+Phase 13 adds **Feedback settings** in the header, including during a session.
+Sound effects and haptics are opt-in (off by default); reduced motion defaults on.
+These three local preferences persist without session data. Short generated tones
+and platform touch feedback follow authoritative countdown/new warning IDs and
+correlated action results. Feedback is bounded, foreground/focus-only and silent
+when restoring a snapshot; no event backlog replays on resume. All warnings and
+results remain visible with effects off. Reduced motion makes navigation instant;
+otherwise it uses short fades. Role labels/monograms and contrast-tested tints
+provide redundant identity. No new dependency, vibration permission, audio service,
+game rule or network DTO is added. See [asset provenance](../docs/ASSET_ATTRIBUTION.md)
+and [actual validation/pending manual checks](../docs/FEEDBACK_VALIDATION.md).
+
+Phase 12 adds Home → Join display: enter only the room code, then watch the public
+lobby, server countdown/time/percentages/warnings and results. It takes no player
+seat, has no station/ready/host controls and uses separate memory-only credentials
+for resume. Leaving a display keeps players running. The scrollable public screen
+adapts totals to columns/rows and permits a wider tablet layout without animation
+or TV/casting. Device/layout checks and deferred physical-device validation are in
+[PUBLIC_DISPLAY_VALIDATION.md](../docs/PUBLIC_DISPLAY_VALIDATION.md).
+
 Toolchain: JDK 17, Gradle 8.13, AGP 8.13.2, Kotlin/Compose compiler 2.2.21,
 Compose BOM 2025.10.01, compile/target SDK 36, min SDK 26.
 Install Platform 36 and Build Tools 35.0.0 through SDK Manager.

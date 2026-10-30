@@ -3,6 +3,15 @@ package com.onejob.game.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
+import com.onejob.game.feedback.*
+import com.onejob.game.ui.settings.*
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,9 +40,17 @@ import com.onejob.game.navigation.sessionDestination as destinationForSession
 import com.onejob.game.navigation.sessionDestinations
 import com.onejob.game.data.ConnectionStatus
 import com.onejob.game.ui.lobby.LobbyOperation
+import com.onejob.game.ui.display.DisplayViewModel
+import com.onejob.game.ui.display.DisplayScreen
 
 @Composable
-fun OneJobApp(repository: GameRepository) {
+fun OneJobApp(repository: GameRepository, preferences: FeedbackPreferencesRepository? = null,
+              feedbackController: FeedbackController? = null) {
+    val localPreferences = preferences ?: remember { FeedbackPreferencesRepository(MemoryFeedbackPreferenceStorage()) }
+    val settingsModel: FeedbackSettingsViewModel = viewModel(factory = viewModelFactory {
+        initializer { FeedbackSettingsViewModel(localPreferences) }
+    })
+    val feedbackPreferences by settingsModel.preferences.collectAsStateWithLifecycle()
     val navController = rememberNavController()
     val lobbyModel: LobbyViewModel = viewModel(factory = viewModelFactory {
         initializer { LobbyViewModel(repository) }
@@ -44,8 +61,11 @@ fun OneJobApp(repository: GameRepository) {
     val gameModel: GameplayViewModel = viewModel(factory = viewModelFactory { initializer { GameplayViewModel(repository) } })
     val game by gameModel.uiState.collectAsStateWithLifecycle()
     val session by repository.session.collectAsStateWithLifecycle()
+    val displayModel: DisplayViewModel = viewModel(factory = viewModelFactory { initializer { DisplayViewModel(repository) } })
+    val display by displayModel.uiState.collectAsStateWithLifecycle()
     val entry by navController.currentBackStackEntryAsState()
     val route = entry?.destination?.route
+    LaunchedEffect(route) { feedbackController?.setScreenEnabled(route != AppDestination.SETTINGS.route) }
     val sessionDestination = destinationForSession(session, AppDestination.entries.firstOrNull { it.route == route },
         lobby.connection.status != ConnectionStatus.CONNECTED || lobby.pending == LobbyOperation.LEAVE)
     val openLobby = {
@@ -55,7 +75,7 @@ fun OneJobApp(repository: GameRepository) {
         }
     }
     LaunchedEffect(lobby.keepLobby, route, sessionDestination) {
-        if (lobby.keepLobby && route !in listOf(AppDestination.CREATE.route, AppDestination.JOIN.route, sessionDestination.route)) {
+        if (lobby.keepLobby && route !in listOf(AppDestination.CREATE.route, AppDestination.JOIN.route, AppDestination.DISPLAY_JOIN.route, AppDestination.SETTINGS.route, sessionDestination.route)) {
             openLobby()
         } else if (!lobby.keepLobby && route in sessionDestinations.map { it.route }) {
             navController.navigate(AppDestination.HOME.route) {
@@ -64,7 +84,19 @@ fun OneJobApp(repository: GameRepository) {
             }
         }
     }
-    NavHost(navController, startDestination = AppDestination.HOME.route) {
+    val openSettings: (() -> Unit)? = if (route == AppDestination.SETTINGS.route) null else {
+        { navController.navigate(AppDestination.SETTINGS.route) { launchSingleTop = true } }
+    }
+    CompositionLocalProvider(LocalOpenFeedbackSettings provides openSettings) {
+    NavHost(navController, startDestination = AppDestination.HOME.route,
+        enterTransition = { if (feedbackPreferences.reducedMotion) EnterTransition.None else fadeIn(tween(120)) },
+        exitTransition = { if (feedbackPreferences.reducedMotion) ExitTransition.None else fadeOut(tween(90)) },
+        popEnterTransition = { if (feedbackPreferences.reducedMotion) EnterTransition.None else fadeIn(tween(120)) },
+        popExitTransition = { if (feedbackPreferences.reducedMotion) ExitTransition.None else fadeOut(tween(90)) }) {
+        composable(AppDestination.SETTINGS.route) {
+            FeedbackSettingsScreen(feedbackPreferences, settingsModel::audio, settingsModel::haptics,
+                settingsModel::motion, onBack = { navController.popBackStack() })
+        }
         composable(AppDestination.HOME.route) {
             ShellHome(feedbackContent = { LobbyFeedbackText(lobby.feedback) }) { destination ->
                 navController.navigate(destination.route) { launchSingleTop = true }
@@ -73,6 +105,7 @@ fun OneJobApp(repository: GameRepository) {
         for ((destination, kind) in listOf(
             AppDestination.CREATE to FormKind.CREATE,
             AppDestination.JOIN to FormKind.JOIN,
+            AppDestination.DISPLAY_JOIN to FormKind.DISPLAY,
         )) {
             composable(destination.route) {
                 val model: RoomFormViewModel = viewModel(factory = viewModelFactory {
@@ -98,6 +131,10 @@ fun OneJobApp(repository: GameRepository) {
             LobbyScreen(lobby, lobbyModel::toggleReady, lobbyModel::start, lobbyModel::askLeave,
                 lobbyModel::dismissLeave, lobbyModel::confirmLeave, lobbyModel::retry)
         }
+        composable(AppDestination.DISPLAY.route) {
+            DisplayScreen(display, lobby, lobbyModel::retry, lobbyModel::askLeave,
+                lobbyModel::dismissLeave, lobbyModel::confirmLeave)
+        }
         composable(AppDestination.ROLE.route) {
             RoleScreen(role, lobby.confirmLeave, roleModel::select, roleModel::confirmRead,
                 roleModel::acknowledge, lobbyModel::askLeave, lobbyModel::dismissLeave, lobbyModel::confirmLeave)
@@ -115,5 +152,6 @@ fun OneJobApp(repository: GameRepository) {
                 lobbyModel::returnToLobby, lobbyModel::retry, lobbyModel::askLeave,
                 lobbyModel::dismissLeave, lobbyModel::confirmLeave)
         }
+    }
     }
 }

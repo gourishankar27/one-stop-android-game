@@ -19,6 +19,11 @@ import com.onejob.game.data.protocol.*
 import com.onejob.game.ui.ShellPage
 import com.onejob.game.ui.connection.ConnectionFeedback
 import kotlin.math.roundToInt
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.contentDescription
+import com.onejob.game.ui.theme.RoleIdentity
 
 @Composable
 fun GameplayScreen(
@@ -82,7 +87,8 @@ fun GameplayScreen(
                 for (warning in public.warnings) {
                     Text(warning.label, color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.testTag("publicWarning-${warning.emergency_id}"))
+                        modifier = Modifier.testTag("publicWarning-${warning.emergency_id}")
+                            .semantics { liveRegion = LiveRegionMode.Polite })
                 }
                 for (instruction in state.instructions) {
                     val urgent = when (instruction.role) {
@@ -95,6 +101,7 @@ fun GameplayScreen(
                         Text(if (urgent) stringResource(R.string.game_attention, instruction.title) else instruction.title)
                     }
                 }
+                state.selected?.let { RoleIdentity(it) }
                 when (state.selected) {
                     StationRole.PILOT -> snapshot.stations.pilot?.let { view ->
                         for (hazard in view.hazards) {
@@ -134,10 +141,11 @@ fun GameplayScreen(
                         Text(stringResource(R.string.game_engine_values, view.output, view.temperature, view.available_power),
                             modifier = Modifier.testTag("engineValues"))
                         state.outputDraft?.let { Text(stringResource(R.string.game_output_preview, it)) }
+                        val outputLabel = stringResource(R.string.engine_output_accessibility)
                         Slider(value = (state.outputDraft ?: view.output).toFloat(),
                             onValueChange = { onOutput(it.roundToInt()) }, valueRange = 0f..100f,
                             steps = 99, enabled = state.canControl && "shutdown" !in state.pending,
-                            modifier = Modifier.fillMaxWidth().testTag("engineOutput"))
+                            modifier = Modifier.fillMaxWidth().testTag("engineOutput").semantics { contentDescription = outputLabel })
                         ActionControl(stringResource(R.string.game_engine_boost), "engineBoost", "engineBoost", state,
                             view.cooldowns.engine_boost) { onAction(PlayerAction.EngineBoost) }
                         ActionControl(stringResource(R.string.game_coolant), "coolant", "coolant", state,
@@ -185,7 +193,7 @@ fun GameplayScreen(
                     ActionFeedback.UNCERTAIN -> R.string.game_action_uncertain
                     ActionFeedback.NOT_SENT -> R.string.game_action_not_sent
                     ActionFeedback.INVALID -> R.string.game_action_invalid
-                }), modifier = Modifier.testTag("actionFeedback"))
+                }), modifier = Modifier.testTag("actionFeedback").semantics { liveRegion = LiveRegionMode.Polite })
             }
         }
         OutlinedButton(onClick = onLeave, modifier = Modifier.fillMaxWidth()) {

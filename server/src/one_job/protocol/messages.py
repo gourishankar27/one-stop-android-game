@@ -80,6 +80,8 @@ class ErrorCode(StrEnum):
     NOT_AUTHENTICATED = "not_authenticated"
     ROOM_NOT_FOUND = "room_not_found"
     ROOM_FULL = "room_full"
+    DISPLAY_FULL = "display_full"
+    NOT_CONTROLLER = "not_controller"
     ROOM_STARTED = "room_started"
     CAPACITY = "capacity"
     NOT_HOST = "not_host"
@@ -105,6 +107,8 @@ ERROR_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.NOT_AUTHENTICATED: "Room membership is required.",
     ErrorCode.ROOM_NOT_FOUND: "The room was not found.",
     ErrorCode.ROOM_FULL: "The room has no available player seats.",
+    ErrorCode.DISPLAY_FULL: "The room has no available display seats.",
+    ErrorCode.NOT_CONTROLLER: "Display sessions cannot control the room or stations.",
     ErrorCode.ROOM_STARTED: "The room has already started.",
     ErrorCode.CAPACITY: "The server cannot create another room right now.",
     ErrorCode.NOT_HOST: "Only the room host can perform this operation.",
@@ -145,6 +149,10 @@ class JoinRoomPayload(DTO):
     name: Name
 
 
+class JoinDisplayPayload(DTO):
+    room_code: RoomCode
+
+
 class ResumeSessionPayload(DTO):
     resume_token: ResumeToken = Field(repr=False)
 
@@ -159,9 +167,15 @@ class PlayerReadyPayload(DTO):
 
 class SessionAcceptedPayload(DTO):
     room_code: RoomCode
-    kind: Literal["player"] = "player"
-    player_id: StrictStr
+    kind: Literal["player", "display"] = "player"
+    player_id: StrictStr | None
     resume_token: ResumeToken = Field(repr=False)
+
+    @model_validator(mode="after")
+    def membership_kind(self) -> "SessionAcceptedPayload":
+        if (self.kind == "display") != (self.player_id is None):
+            raise ValueError("membership identity must match kind")
+        return self
 
 
 class AckPayload(DTO):
@@ -270,7 +284,7 @@ class PublicRoundView(DTO):
 
 
 class PublicStatePayload(DTO):
-    public: PublicRoundView
+    public: PublicRoundView | None
 
 
 class SetEnginePowerInput(DTO):

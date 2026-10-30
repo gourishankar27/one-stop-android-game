@@ -28,6 +28,12 @@ Phase 10 adds the three seeded cooperative emergencies and private station warni
 Phase 11 implements server countdown, stable Results and host rematch/lobby return.
 Its checks and deferred physical-phone gate are recorded in
 [ROUND_LIFECYCLE_VALIDATION.md](docs/ROUND_LIFECYCLE_VALIDATION.md).
+Phase 12 adds an optional extra Android public display with separate observer
+admission/recovery and no private station data. Evidence and remaining device
+gates: [PUBLIC_DISPLAY_VALIDATION.md](docs/PUBLIC_DISPLAY_VALIDATION.md).
+Phase 13 adds optional local sound/haptics/settings, readable role identity and
+reduced-motion navigation. [Feedback evidence and remaining manual gates](docs/FEEDBACK_VALIDATION.md)
+and [asset provenance](docs/ASSET_ATTRIBUTION.md) document its scope.
 See [completed core gameplay checks](docs/CORE_GAMEPLAY_VALIDATION.md)
 and [role-system evidence](docs/ROLE_SYSTEM_VALIDATION.md).
 See [the progress ledger](plans/plans.md) for validation gates and next work.

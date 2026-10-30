@@ -33,6 +33,24 @@ def lobby(revision, reply_to=None):
     )
 
 
+async def test_null_display_lobby_coalesces_but_terminal_public_state_is_critical(engine):
+    box = Outbox(3)
+    empty = PublicStateEnvelope(
+        reply_to=None, room_revision=1, payload=PublicStatePayload(public=None)
+    )
+    assert box.offer(empty)
+    newer = empty.model_copy(update={"room_revision": 2})
+    assert box.offer(newer) and box.size == 1
+    engine.start()
+    engine.tick(engine.snapshot().config.duration_ticks)
+    terminal = snapshot(engine, 3)
+    assert box.offer(terminal) and box.offer(terminal)
+    assert box.size == 3 and not box.offer(terminal)
+    assert (await box.get()).message == newer
+    assert (await box.get()).message == terminal
+    assert (await box.get()).message == terminal
+
+
 async def test_lobby_coalescing_preserves_correlated_reply_and_distinct_snapshot_type(engine):
     box = Outbox(3)
     assert box.offer(lobby(1))

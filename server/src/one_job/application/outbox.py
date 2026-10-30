@@ -38,7 +38,9 @@ class Outbox:
             isinstance(message, (PublicStateEnvelope, LobbyStateEnvelope, RoleStateEnvelope))
             and message.reply_to is None
             and not (
-                isinstance(message, RoleStateEnvelope) and message.payload.public.result is not None
+                isinstance(message, (RoleStateEnvelope, PublicStateEnvelope))
+                and message.payload.public is not None
+                and message.payload.public.result is not None
             )
         ):
             for item in tuple(self._items):
@@ -62,7 +64,9 @@ class Outbox:
     @staticmethod
     def _snapshot_key(message: PublicStateEnvelope | LobbyStateEnvelope | RoleStateEnvelope) -> str:
         if isinstance(message, (PublicStateEnvelope, RoleStateEnvelope)):
-            return message.payload.public.round_id
+            return (
+                message.payload.public.round_id if message.payload.public is not None else "lobby"
+            )
         return message.payload.room_code
 
     async def get(self) -> Outgoing:

@@ -30,7 +30,7 @@ class SessionNavigationTest {
     @Test fun newBriefingAndLobbyOverrideOldResultAndRecoveryRetainsOnlyRoute() {
         val old=session("victory")
         val lobby=LobbyPayload("ABCD23","lobby",old.identity!!.playerId,
-            listOf(LobbyPlayer(old.identity.playerId,"Crew",true,false)),false)
+            listOf(LobbyPlayer(old.identity.playerId!!,"Crew",true,false)),false)
         assertEquals(AppDestination.LOBBY,sessionDestination(old.copy(lobby=lobby),AppDestination.RESULTS,false))
         assertEquals(AppDestination.ROLE,sessionDestination(old.copy(lobby=lobby.copy(stage="briefing")),AppDestination.RESULTS,false))
         assertEquals(AppDestination.RESULTS,sessionDestination(SessionState(),AppDestination.RESULTS,true))

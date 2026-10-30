@@ -8,7 +8,7 @@ import com.onejob.game.data.repository.CommandResult
 import com.onejob.game.data.repository.RemoteCode
 
 enum class LobbyFeedback {
-    ROOM_NOT_FOUND, ROOM_FULL, ROOM_STARTED, CAPACITY, INVALID_INPUT, NOT_HOST,
+    ROOM_NOT_FOUND, ROOM_FULL, DISPLAY_FULL, ROOM_STARTED, CAPACITY, INVALID_INPUT, NOT_HOST,
     NOT_READY, FEATURE_UNAVAILABLE, UNCERTAIN, NOT_SENT, EXPIRED, REJECTED, LEFT, LEFT_UNCERTAIN,
 }
 
@@ -19,6 +19,7 @@ fun CommandResult.feedback(): LobbyFeedback? = when (this) {
     is CommandResult.Rejected -> when (code) {
         RemoteCode.ROOM_NOT_FOUND -> LobbyFeedback.ROOM_NOT_FOUND
         RemoteCode.ROOM_FULL -> LobbyFeedback.ROOM_FULL
+        RemoteCode.DISPLAY_FULL -> LobbyFeedback.DISPLAY_FULL
         RemoteCode.ROOM_STARTED -> LobbyFeedback.ROOM_STARTED
         RemoteCode.CAPACITY -> LobbyFeedback.CAPACITY
         RemoteCode.INVALID_MESSAGE -> LobbyFeedback.INVALID_INPUT
@@ -35,6 +36,7 @@ fun LobbyFeedbackText(feedback: LobbyFeedback?) {
     if (feedback != null) Text(stringResource(when (feedback) {
         LobbyFeedback.ROOM_NOT_FOUND -> R.string.error_room_not_found
         LobbyFeedback.ROOM_FULL -> R.string.error_room_full
+        LobbyFeedback.DISPLAY_FULL -> R.string.error_display_full
         LobbyFeedback.ROOM_STARTED -> R.string.error_room_started
         LobbyFeedback.CAPACITY -> R.string.error_capacity
         LobbyFeedback.INVALID_INPUT -> R.string.error_input

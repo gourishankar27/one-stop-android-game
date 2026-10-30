@@ -1,0 +1,314 @@
+[
+  {
+    "name": "display-lobby",
+    "request": {
+      "version": 1,
+      "type": "join_display",
+      "request_id": "display-lobby",
+      "payload": {
+        "room_code": "ABCD23"
+      }
+    },
+    "response": {
+      "version": 1,
+      "type": "session_accepted",
+      "reply_to": "display-lobby",
+      "room_revision": 17,
+      "payload": {
+        "room_code": "ABCD23",
+        "kind": "display",
+        "player_id": null,
+        "resume_token": "SYNTHETIC_DISPLAY_CREDENTIAL"
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "lobby_state",
+        "reply_to": null,
+        "room_revision": 17,
+        "payload": {
+          "room_code": "ABCD23",
+          "stage": "lobby",
+          "host_player_id": "00000000-0000-0000-0000-000000000001",
+          "players": [
+            {
+              "player_id": "00000000-0000-0000-0000-000000000001",
+              "name": "Crew 1",
+              "connected": true,
+              "ready": false
+            },
+            {
+              "player_id": "00000000-0000-0000-0000-000000000002",
+              "name": "Crew 2",
+              "connected": true,
+              "ready": false
+            }
+          ],
+          "can_start": false
+        }
+      },
+      {
+        "version": 1,
+        "type": "public_state",
+        "reply_to": null,
+        "room_revision": 17,
+        "payload": {
+          "public": null
+        }
+      }
+    ]
+  },
+  {
+    "name": "display-running",
+    "request": {
+      "version": 1,
+      "type": "request_state",
+      "request_id": "display-running",
+      "payload": {}
+    },
+    "response": {
+      "version": 1,
+      "type": "public_state",
+      "reply_to": "display-running",
+      "room_revision": 17,
+      "payload": {
+        "public": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "stage": "running",
+          "tick_index": 90,
+          "remaining_ms": 51000,
+          "countdown_remaining_ms": null,
+          "paused_from": null,
+          "hull_percent": 0,
+          "shield_percent": 60,
+          "warnings": [
+            {
+              "emergency_id": 41,
+              "kind": "asteroid",
+              "label": "Asteroid approach"
+            }
+          ],
+          "result": null
+        }
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "lobby_state",
+        "reply_to": null,
+        "room_revision": 17,
+        "payload": {
+          "room_code": "ABCD23",
+          "stage": "running",
+          "host_player_id": "00000000-0000-0000-0000-000000000001",
+          "players": [
+            {
+              "player_id": "00000000-0000-0000-0000-000000000001",
+              "name": "Crew 1",
+              "connected": true,
+              "ready": false
+            },
+            {
+              "player_id": "00000000-0000-0000-0000-000000000002",
+              "name": "Crew 2",
+              "connected": true,
+              "ready": false
+            }
+          ],
+          "can_start": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "display-countdown",
+    "request": {
+      "version": 1,
+      "type": "request_state",
+      "request_id": "display-countdown",
+      "payload": {}
+    },
+    "response": {
+      "version": 1,
+      "type": "public_state",
+      "reply_to": "display-countdown",
+      "room_revision": 17,
+      "payload": {
+        "public": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "stage": "countdown",
+          "tick_index": 0,
+          "remaining_ms": 60000,
+          "countdown_remaining_ms": 3000,
+          "paused_from": null,
+          "hull_percent": 0,
+          "shield_percent": 60,
+          "warnings": [],
+          "result": null
+        }
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "lobby_state",
+        "reply_to": null,
+        "room_revision": 17,
+        "payload": {
+          "room_code": "ABCD23",
+          "stage": "countdown",
+          "host_player_id": "00000000-0000-0000-0000-000000000001",
+          "players": [
+            {
+              "player_id": "00000000-0000-0000-0000-000000000001",
+              "name": "Crew 1",
+              "connected": true,
+              "ready": false
+            },
+            {
+              "player_id": "00000000-0000-0000-0000-000000000002",
+              "name": "Crew 2",
+              "connected": true,
+              "ready": false
+            }
+          ],
+          "can_start": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "display-result-resume",
+    "request": {
+      "version": 1,
+      "type": "resume_session",
+      "request_id": "display-resume",
+      "payload": {
+        "resume_token": "SYNTHETIC_DISPLAY_CREDENTIAL"
+      }
+    },
+    "response": {
+      "version": 1,
+      "type": "session_accepted",
+      "reply_to": "display-resume",
+      "room_revision": 17,
+      "payload": {
+        "room_code": "ABCD23",
+        "kind": "display",
+        "player_id": null,
+        "resume_token": "SYNTHETIC_DISPLAY_CREDENTIAL"
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "lobby_state",
+        "reply_to": null,
+        "room_revision": 17,
+        "payload": {
+          "room_code": "ABCD23",
+          "stage": "finished",
+          "host_player_id": "00000000-0000-0000-0000-000000000001",
+          "players": [
+            {
+              "player_id": "00000000-0000-0000-0000-000000000001",
+              "name": "Crew 1",
+              "connected": true,
+              "ready": false
+            },
+            {
+              "player_id": "00000000-0000-0000-0000-000000000002",
+              "name": "Crew 2",
+              "connected": true,
+              "ready": false
+            }
+          ],
+          "can_start": false
+        }
+      },
+      {
+        "version": 1,
+        "type": "public_state",
+        "reply_to": null,
+        "room_revision": 17,
+        "payload": {
+          "public": {
+            "round_id": "00000000-0000-0000-0000-000000000063",
+            "stage": "finished",
+            "tick_index": 600,
+            "remaining_ms": 0,
+            "countdown_remaining_ms": null,
+            "paused_from": null,
+            "hull_percent": 0,
+            "shield_percent": 60,
+            "warnings": [],
+            "result": {
+              "outcome": "victory",
+              "reason": "survived",
+              "survived_ms": 60000,
+              "final_hull_percent": 0,
+              "resolved_count": 0,
+              "failed_count": 0,
+              "players": [
+                {
+                  "player_id": "00000000-0000-0000-0000-000000000001",
+                  "name": "Crew 1"
+                },
+                {
+                  "player_id": "00000000-0000-0000-0000-000000000002",
+                  "name": "Crew 2"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "display-not_controller",
+    "request": {
+      "version": 1,
+      "type": "player_ready",
+      "request_id": "display-not_controller",
+      "payload": {
+        "ready": true
+      }
+    },
+    "response": {
+      "version": 1,
+      "type": "error",
+      "reply_to": "display-not_controller",
+      "room_revision": 17,
+      "payload": {
+        "code": "not_controller",
+        "message": "Display sessions cannot control the room or stations.",
+        "retryable": false
+      }
+    }
+  },
+  {
+    "name": "display-display_full",
+    "request": {
+      "version": 1,
+      "type": "join_display",
+      "request_id": "display-display_full",
+      "payload": {
+        "room_code": "ABCD23"
+      }
+    },
+    "response": {
+      "version": 1,
+      "type": "error",
+      "reply_to": "display-display_full",
+      "room_revision": 17,
+      "payload": {
+        "code": "display_full",
+        "message": "The room has no available display seats.",
+        "retryable": false
+      }
+    }
+  }
+]

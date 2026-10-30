@@ -34,10 +34,10 @@ fun RoomFormScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val submit = { onSubmit(); keyboard?.hide(); Unit }
     BackHandler(onBack = onBack)
-    ShellPage(if (kind == FormKind.CREATE) R.string.create_title else R.string.join_title, onBack) {
-        Text(stringResource(R.string.form_description))
+    ShellPage(when (kind) { FormKind.CREATE -> R.string.create_title; FormKind.JOIN -> R.string.join_title; FormKind.DISPLAY -> R.string.display_join_title }, onBack) {
+        Text(stringResource(if (kind == FormKind.DISPLAY) R.string.display_join_hint else R.string.form_description))
         ConnectionFeedback(state.connection)
-        OutlinedTextField(
+        if (kind != FormKind.DISPLAY) OutlinedTextField(
             value = state.name,
             onValueChange = onNameChanged,
             label = { Text(stringResource(R.string.player_name)) },
@@ -51,7 +51,7 @@ fun RoomFormScreen(
             keyboardActions = KeyboardActions(onDone = { submit() }),
             modifier = Modifier.fillMaxWidth().testTag("nameInput"),
         )
-        if (kind == FormKind.JOIN) {
+        if (kind != FormKind.CREATE) {
             OutlinedTextField(
                 value = state.roomCode,
                 onValueChange = onCodeChanged,
@@ -68,7 +68,7 @@ fun RoomFormScreen(
             )
         }
         Button(onClick = submit, enabled = state.canSubmit, modifier = Modifier.fillMaxWidth().testTag("submitAdmission")) {
-            Text(stringResource(if (kind == FormKind.CREATE) R.string.submit_create else R.string.submit_join))
+            Text(stringResource(when (kind) { FormKind.CREATE -> R.string.submit_create; FormKind.JOIN -> R.string.submit_join; FormKind.DISPLAY -> R.string.submit_display }))
         }
         if (state.pending) Text(stringResource(R.string.admission_pending))
         LobbyFeedbackText(state.feedback)

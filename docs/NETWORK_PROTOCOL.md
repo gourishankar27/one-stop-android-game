@@ -1,6 +1,11 @@
 # WebSocket protocol v1
 
-## Implemented Phase 11 subset
+## Implemented Phase 12 subset
+
+Phase 13 does not change the wire contract. Its optional local feedback uses the
+existing round/emergency IDs, server countdown snapshots and correlated action
+reply sequences. Android action receipts are process-local presentation events,
+not a new DTO, command, broadcast or source of game authority.
 
 The server exposes independent `GET /health` and `/ws`. WebSockets use JSON text
 frames only, one message per frame, maximum UTF-8 size 16 KiB (16,384 bytes).
@@ -10,7 +15,7 @@ define gameplay payloads.
 
 Implemented commands: `ping`, `create_room`, `join_room`, `resume_session`,
 `leave_room`, `player_ready`, `request_state`, `start_game`, `briefing_ready`,
-`play_again`, `return_to_lobby` and
+`play_again`, `return_to_lobby`, `join_display` and
 all nine authoritative `player_action` controls. Their payload DTOs reject
 unknown fields/coercion. Names are trimmed
 1–20 Unicode scalar characters without control characters; duplicate names are
@@ -62,9 +67,8 @@ attempts consume their sequence even on rejection; sequences must strictly
 increase. Stale-round attempts do not consume current-round sequence. Cached
 request replay precedes sequence validation, returning the original terminal reply
 without applying again. A new ID with an old sequence returns `stale_action`.
-There is no sequence reset on resume; a new round resets it. Only `join_display`
-remains reserved with `feature_unavailable` before business payload decoding. No observer
-membership or `public_state` broadcast is exposed. Phase 10 schedules asteroid,
+There is no sequence reset on resume; a new round resets it. All declared v1
+commands are now implemented. Phase 10 schedules asteroid,
 overheating and shield-overload events inside the pure engine.
 
 `emergency_event` is now implemented as a critical, noncoalesced shared lifecycle
@@ -86,7 +90,7 @@ catch-up steps run per turn; if more than five remain due on the next consecutiv
 turn, abort with `server_overload`. Terminal owned state includes the public
 result immediately, bypasses snapshot coalescing, and stops the runner. Exactly
 one critical `game_over` with null `reply_to`, room revision and
-`{round_id,result}` is emitted to each currently connected member on terminal
+`{round_id,result}` is emitted to each currently connected player on terminal
 transition. Snapshot/resume restores that same result without replaying the event.
 Android navigates to Results from the matching full snapshot, never from the event.
 
@@ -152,11 +156,14 @@ views and request a fresh snapshot, or close if recovery cannot be established.
 The decoder bounds JSON nesting to 64 containers. No raw error message, close
 reason, frame or token reaches public connection/command state or UI diagnostics.
 The current decoder supports `pong`, `session_accepted`, `ack`, `error`,
-`lobby_state`, `role_assigned`, `role_state` and the reserved `public_state`.
+`lobby_state`, `role_assigned`, `role_state`, `public_state`, `emergency_event`
+and `game_over`.
 Role decoding requires exactly one station or Engineer+Shields, matching metadata
 and station keys. Unknown station keys, null station values or inconsistent
 ownership/acknowledgement are protocol failures; private caches are cleared.
-Recovery completes only after the fresh correlated private snapshot. Equal
+Player recovery completes only after the fresh correlated private snapshot;
+display recovery requires the fresh correlated public snapshot and public lobby.
+Equal
 revisions across distinct message kinds are valid. Later event kinds need DTOs
 and fixture updates in their selected phases.
 [Phase 09 fixtures](protocol-fixtures/phase09.json) add running private views,
@@ -236,8 +243,8 @@ and a fresh state request, without guessing a new state.
 ## Connection admission and credentials
 
 Before membership, only `ping`, `create_room`, `join_room`, `resume_session`, and
-(Phase 12) `join_display` are allowed. Require membership within 10 seconds.
-Limit controllers to 3, rooms to 100 per process, future displays to 2 per room.
+`join_display` are allowed. Require membership within 10 seconds.
+Limit controllers to 3, rooms to 100 per process and displays to 2 per room.
 Provisional limits are configurable server settings, not balance config.
 
 `create_room`/`join_room` return a targeted `session_accepted` containing a secure
@@ -248,6 +255,47 @@ accounts. Keep tokens stable for one membership initially; erase on explicit
 leave, expiry, room deletion or server restart. WSS protects credentials outside
 opt-in trusted development. Do not retry a lost create/join blindly; show an
 uncertain result and let the user retry (unclaimed rooms expire).
+
+### Public display sessions (Phase 12)
+
+`join_display{room_code}` is a strict code-only admission at any room stage.
+It returns a targeted `session_accepted` with `kind=display`, `player_id=null`
+and its own opaque credential, then the public `lobby_state` and `public_state`.
+The internal display UUID never becomes a player identity. Displays occupy a
+separate two-session collection, including disconnected seats during 30-second
+grace. A third receives `display_full`; it consumes no controller seat.
+Display tokens use the same digest/index/endpoint-bound recovery policy as players.
+
+Displays may only ping, request state, resume their own credential or leave.
+Every other typed command, including all nine station actions and all admissions/
+host/ready/briefing commands, receives `not_controller` before player dispatch,
+without changing room revision/readiness/host/simulation. Duplicate command IDs
+retain bounded replay/conflict semantics. A correlated display `request_state`
+ends with `public_state`, preceded by unsolicited public lobby state.
+
+`public_state.payload` has exactly `{public: PublicRoundView|null}`. Null means
+the lobby has no round; it does not invent a round UUID or gameplay clock.
+Otherwise it is constructed directly with the existing public allowlist, never
+from a private player projection. Displays receive no assignment, role state,
+station objects, seed/config/ownership, private targets, deadlines or credentials
+belonging to players. They receive current warning labels and terminal results
+through snapshots, without `emergency_event` or `game_over` events. Public
+snapshots use 5Hz/coalescing; terminal public snapshots are critical/noncoalesced.
+
+Display join/resume/disconnect/leave/grace expiry never reset player readiness,
+pause a round, transfer host or advance revision. Observer activity does not
+refresh room idle time. A controllerless/deleted/expired room invalidates all
+observer credentials and sends unsolicited `session_expired`/1008 to connected
+displays. Shutdown instead closes 1001. Replacing a connection fences its old
+generation without affecting players. Round replacement/lobby return invalidates
+cached public replies along with cached private state replies.
+
+Android tracks kind with nullable player identity, routes displays to a dedicated
+public-only screen, blocks controller intents locally and treats private inbound
+messages on a display session as a protocol failure. It hides stale public state
+while recovering, and restores only after full correlated public synchronization.
+Credentials are never saved in UI/navigation/process state. Shared synthetic
+[Phase 12 fixtures](protocol-fixtures/phase12.json) are checked in both languages.
 
 Resume authenticates by token, not a claimed player name/ID. A successful resume
 fences and closes the old socket, replaces connection generation, returns
@@ -275,7 +323,7 @@ and ping. Observer restrictions apply when Phase 12 is implemented.
 | `play_again` | `{}` | `ack`, new round/roles/briefing; host at finished/aborted and all connected/ready |
 | `return_to_lobby` | `{}` | `ack`, then `lobby_state`; host at finished/aborted; clears readiness |
 | `ping` | `nonce: string` (1–64 chars) | `pong`; allowed before admission |
-| `join_display` (12) | `room_code: string` | Observer `session_accepted` and public snapshot; not a player slot |
+| `join_display` | `room_code: string` | Observer `session_accepted` and public snapshot; not a player slot |
 
 Player name and room-code normalization is defined in GAME_STATE.md. Only an
 existing participant can resume after start. Late new controller joins are denied.
@@ -309,9 +357,9 @@ commands are supplied by the application, not copied from untrusted fields.
 | `lobby_state` | `room_code, stage, host_player_id, players: [{player_id,name,connected,ready}], can_start: boolean`; room members |
 | `role_assigned` | `round_id, roles: [Role], instructions: [{role,title,steps:[string]}]`; owning player only |
 | `role_state` | `public: PublicRoundView, stations: {owned Role: StationView}, briefing: BriefingStatus`; owning player only |
-| `public_state` (12) | `public: PublicRoundView`; observers only |
-| `emergency_event` | `round_id, emergency_id, kind, status: started|resolved|failed`; shared labels only, no private targets |
-| `game_over` | `round_id, result: {outcome,reason,survived_ms,final_hull_percent,resolved_count,failed_count,players:[{player_id,name}]}`; all room members |
+| `public_state` | `public: PublicRoundView|null`; observers only; null in lobby |
+| `emergency_event` | `round_id, emergency_id, kind, status: started|resolved|failed`; players only, shared labels without targets |
+| `game_over` | `round_id, result: {outcome,reason,survived_ms,final_hull_percent,resolved_count,failed_count,players:[{player_id,name}]}`; players only |
 | `action_rejected` | `code, message, client_action_seq, round_id`; requester only |
 | `error` | `code, message, retryable: boolean`; requester, or unsolicited connection error |
 | `pong` | `nonce`; requester |

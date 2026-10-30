@@ -7,7 +7,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from one_job.application.connections import ConnectionSettings
 from one_job.main import create_app
-from one_job.protocol.envelopes import MAX_FRAME_BYTES, RESERVED_TYPES
+from one_job.protocol.envelopes import MAX_FRAME_BYTES
 from tests.support import frame, owned_tasks
 
 
@@ -42,14 +42,15 @@ def test_ping_then_health_still_independent(clock):
             assert client.get("/rooms").status_code == 404
 
 
-@pytest.mark.parametrize("kind", sorted(RESERVED_TYPES))
-def test_future_commands_never_admit_or_call_engine(kind, clock):
+def test_invalid_display_admission_never_admits_or_calls_engine(clock):
     application = create_app(clock=clock)
     with TestClient(application) as client:
         with client.websocket_connect("/ws") as socket:
-            socket.send_json(frame(kind, payload={"resume_token": "PRIVATE_TOKEN_SENTINEL"}))
+            socket.send_json(
+                frame("join_display", payload={"resume_token": "PRIVATE_TOKEN_SENTINEL"})
+            )
             response = socket.receive_json()
-            assert_error(response, "feature_unavailable")
+            assert_error(response, "invalid_message")
             assert "PRIVATE_TOKEN_SENTINEL" not in json.dumps(response)
             assert application.state.rooms.room_count == 0
             assert not hasattr(application.state, "engine")
@@ -110,7 +111,7 @@ def test_deadline_is_ten_seconds_and_ping_does_not_extend_it(clock):
             socket.send_json(frame())
             assert socket.receive_json()["type"] == "pong"
             socket.send_json(frame("join_display", request_id="future"))
-            assert_error(socket.receive_json(), "feature_unavailable", "future")
+            assert_error(socket.receive_json(), "invalid_message", "future")
             socket.portal.call(clock.advance, 1)
             assert_error(socket.receive_json(), "not_authenticated", None)
             assert_closed(socket, 1008)
