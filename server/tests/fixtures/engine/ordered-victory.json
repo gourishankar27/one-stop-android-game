@@ -1,6 +1,6 @@
 {
-  "engine_version": "spaceship-engine-v1",
-  "config_version": "spaceship-v1",
+  "engine_version": "spaceship-engine-v3",
+  "config_version": "spaceship-v2",
   "python_version": "3.12.10",
   "seed": 12345,
   "round_id": "00000000-0000-0000-0000-000000000010",
@@ -10,7 +10,7 @@
     {"id": "00000000-0000-0000-0000-000000000003", "name": "Crew 3"}
   ],
   "owners": {"pilot": 0, "engineer": 1, "shields": 2},
-  "config": {},
+  "config": {"emergencies_enabled": false},
   "requests": [
     {"tick": 0, "actor": 1, "type": "set_engine_power", "value": 70, "code": "accepted", "order": 1},
     {"tick": 0, "actor": 0, "type": "move_lane", "direction": "left", "code": "accepted", "order": 2},

@@ -370,6 +370,135 @@ private presentation on recovery. Continue the user's one-phone/two-emulator
 verification preference. Update the v1 role/briefing subset, allowlisted briefing
 status, fixtures and both codecs together. No dependency/service is added.
 
+## ADR-018 — Core controls and a mailbox-owned fixed-step runner
+
+Date: 2026-10-28
+
+Status: Accepted
+
+Phase 09 completes the existing integer spaceship rules without emergencies or
+new dependencies. Active durations contribute their effects before ageing;
+energy gains and shield drain are combined then clamped, and zero energy releases
+shield hold. Shutdown cancels the documented consumers but preserves cooldowns
+and an existing evade. Active effects cannot stack even with custom shorter
+cooldowns. Zero-energy shield activation is invalid_action; unmet output/power
+requirements are insufficient_power. Defaults remain provisional and unchanged.
+Engine version becomes spaceship-engine-v2; baseline replay fixtures retain their
+commands/outcomes and record the new engine version alongside a full-catalog trace.
+
+All briefing acknowledgements enter running directly. Phase 11 adds countdown.
+A synchronous RoomRunner is called only by the existing room task; it uses the
+injected monotonic clock, fixed 100ms steps and nonblocking 5Hz owned projections.
+Commands dispatched in a turn precede its continuous steps and record their
+completed tick/order. At most five catch-up steps run per turn; if more than five
+are still due on the next consecutive turn, abort server_overload. Pause discards
+wall-time backlog and resume establishes a fresh tick origin. Terminal state is
+published immediately and is never coalesced away. Slow writers remain bounded
+and cannot be awaited by simulation.
+
+Current-round typed action attempts consume a monotonically increasing per-player
+sequence even on rejection; stale-round attempts do not consume the current
+sequence. Request replay is checked first and remains membership-scoped. Accepted
+actions receive correlated ack with sequence/applied tick, rejected attempts get
+action_rejected with sequence/round and safe code. No rejected action mutates ship
+state, accepted order or RNG. Resume retains sequence; Android never resends actions.
+
+Android renders only owned server views. Discrete actions have bounded pending
+guards; output uses one in-flight request plus one conflated latest value, at most
+10 sends/second. Recovery/round/stage changes invalidate queued intents. Local
+slider preview is distinguished from accepted output. Inactive owned tabs retain
+badges for server-provided instruction entries, without creating emergencies.
+Terminal summary stays on Gameplay with confirmed Leave; no results/rematch flow.
+The phone is currently unavailable: perform two-/three-emulator checks and leave
+the real-phone gate pending unless that device becomes available.
+
+2026-10-29 continuation: the phone became available; the user approved finishing
+Phase 09 and then starting Phase 10. The prior one-phone/two-emulator preference
+was retained. Real LAN UI and instrumentation closed the phone gate, with exact
+device mix and results in CORE_GAMEPLAY_VALIDATION.md.
+
+## ADR-019 — Deterministic spaceship emergencies in the existing engine
+
+Date: 2026-10-29
+
+Status: Accepted
+
+Phase 10 implements only the three GAME_DESIGN.md emergencies. Their numeric
+defaults are unchanged and provisional. Engine rules become spaceship-engine-v3,
+config spaceship-v2: emergencies are enabled by default. An explicit validated
+`emergencies_enabled=False` configuration preserves historical core-only replay
+and isolated physics fixtures; clients cannot select or bypass this setting.
+
+Each running tick applies continuous resources, evaluates existing emergencies
+in ascending ID order, then ages active durations/cooldowns. This preserves the
+last active evade tick. Success precedes same-tick timeout, asteroid maneuver
+precedes shield payment, and terminal checks follow all simultaneous effects.
+Completed events are removed and counted once. Terminal/abort clears remaining
+warnings without inventing failures; pause advances neither events nor RNG.
+
+After effects, if still running, reconsider a hot unrepresented overheat before
+the scheduled slot. This gives a threshold event priority when only one capacity
+slot remains. It uses no random draws. Scheduled slots start at configured tick
+80; choose eligible asteroid/overload in their documented order, then any target
+draws, then the next third-dependent inclusive integer interval. A skipped slot
+draws only its next interval, with no every-tick retries. Stable monotonically
+increasing IDs are local to a round; neither RNG/seed nor future slots leave it.
+
+The existing room owner emits each shared lifecycle event once through the
+bounded critical outbox. Regular private snapshots contain only owned typed
+instructions and public labels; Android renders them without evaluating success
+or running a deadline clock. Android retains only the latest server-provided
+shared lifecycle kind/status, clears it with recovery/round replacement and keeps
+active warnings driven by snapshots. No resolve command, framework or dependency is added.
+New started labels do not immediately replace the last completed outcome text;
+active warning labels still arrive in snapshots. This retains at most one shared
+feedback item and does not infer a ship or round result on Android.
+An explicit local CLI seed/config harness supports repeatable verification without
+an HTTP/debug bypass. Retain the user-approved one-phone/two-emulator device mix
+and distinguish scripted device checks from human group/balance observations.
+
+## ADR-020 — Authoritative countdown, results and repeated room cycles
+
+Date: 2026-10-29
+
+Status: Accepted
+
+The user explicitly selected Phase 11 while deferring physical-phone testing.
+Phase 10's implementation/automated prerequisite is present; its human gate stays
+open. This authorizes Phase 11 implementation without claiming Phase 10 complete.
+Do not change the progress ledger unless Phase 11's completion gates all pass.
+
+The existing room owner and synchronous runner advance a 3000ms countdown in
+fixed 100ms steps, publishing at 5Hz and immediately on stage changes. Countdown
+does not consume gameplay ticks, resources or RNG. Pause freezes the completed
+countdown step and discards wall-time backlog; resume sets a fresh origin. The
+same bounded catch-up/overload policy applies. Pure engine countdown transitions
+accept integer elapsed milliseconds; immediate `start()` remains a core-fixture
+API. Running physics, emergency defaults and replay versions are unchanged.
+
+All terminal causes publish a stable allowlisted result snapshot and at most one
+critical `game_over` event per round. Snapshots, including reconnect snapshots,
+drive Android Results navigation; the event cannot manufacture an outcome.
+Results readiness is explicit. `can_start` is the shared eligibility hint for
+Start in lobby or Play again at terminal; the server checks the operation's stage
+and host separately. Any join, resume/disconnect, start/rematch or return resets
+readiness. Rematch requires 2–3 connected ready current members, preserves room/
+membership identity and creates a fresh private seed/round/assignment/context.
+Bounded collision retries reject a repeated previous seed/round safely rather
+than reusing it. The local seed harness advances its deterministic seed sequence.
+Return-to-lobby clears round ownership/state and readiness; new players can then
+join. No finished context or stale input queue is reused.
+Replacing/clearing a round invalidates cached private `request_state` replies;
+other command terminal replies retain their bounded membership replay semantics.
+Reusing an old state-request ID after that boundary therefore returns a current
+allowlisted view, rather than retaining a previous station's private snapshot.
+
+Android uses explicit Countdown and Results destinations and the existing shared
+room-command ViewModel for readiness/host actions/leave. Recovery clears private
+state; stage/round snapshots restore the destination. Returning to lobby or a new
+briefing retires the old round on Android and clears cached views/feedback.
+No database, framework, library, display/audio or Phase 14 fault matrix is added.
+
 ## Decisions still deferred
 
 External backend hosting and an open-source license are not selected. Phase 16 must start with an evidence-based local-networking decision. Phase 17 must specify its submarine mechanics after spaceship playtests. Phase 18 reevaluates current store requirements and crash-reporting needs without publishing anything.

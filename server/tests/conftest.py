@@ -19,7 +19,7 @@ def engine():
     players = tuple(Player(PlayerId(UUID(int=i)), f"Crew {i}") for i in range(1, 4))
     ids = tuple(player.player_id for player in players)
     return GameEngine(
-        GameConfig(),
+        GameConfig(emergencies_enabled=False),
         827364,
         players,
         RoleAssignment(ids, dict(zip(Role, ids, strict=True))),

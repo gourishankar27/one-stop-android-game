@@ -12,7 +12,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=int, choices=range(101), default=40)
     args = parser.parse_args()
-    config = GameConfig()
+    config = GameConfig(emergencies_enabled=False)
     players = tuple(Player(PlayerId(UUID(int=index)), f"Crew {index}") for index in range(1, 4))
     ids = tuple(player.player_id for player in players)
     assignments = RoleAssignment(ids, dict(zip(Role, ids, strict=True)))

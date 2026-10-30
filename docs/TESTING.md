@@ -9,6 +9,12 @@ Phase 05 Android shell evidence lives in [ANDROID_FOUNDATION_VALIDATION.md](ANDR
 Phase 06 transport/device evidence lives in [ANDROID_NETWORKING_VALIDATION.md](ANDROID_NETWORKING_VALIDATION.md).
 Phase 07 lobby evidence lives in [LOBBY_UI_VALIDATION.md](LOBBY_UI_VALIDATION.md).
 Phase 08 role/privacy evidence lives in [ROLE_SYSTEM_VALIDATION.md](ROLE_SYSTEM_VALIDATION.md).
+Phase 09 completed rules/runner/phone UI evidence lives in
+[CORE_GAMEPLAY_VALIDATION.md](CORE_GAMEPLAY_VALIDATION.md).
+Phase 10 emergency rules, seeded integration, device warning evidence and any
+remaining gates live in [EMERGENCY_VALIDATION.md](EMERGENCY_VALIDATION.md).
+Phase 11 countdown, snapshot Results, repeated rematches and deferred phone gates
+are recorded in [ROUND_LIFECYCLE_VALIDATION.md](ROUND_LIFECYCLE_VALIDATION.md).
 This document defines the commands and behavior each layer must verify as it is
 implemented.
 
@@ -133,7 +139,7 @@ Python and Kotlin. Private representations and recovery clear stale details.
 With the local server running, `uv run python examples/role_smoke.py` starts
 separate two-/three-client rooms, inspects captured frames against exact field
 allowlists, checks owned-only metadata/stations, rejects non-host/wrong-role
-commands, acknowledges all and verifies held briefing at tick zero before leave.
+commands, acknowledges all and now verifies direct running at tick zero before leave.
 `--proof ../artifacts/phase08/privacy-proof.json` optionally saves only sanitized
 field names/counts, never raw frames, tokens or player IDs. Its global limit is
 20 seconds. Actual UI verification uses the approved phone plus two emulators:
@@ -227,12 +233,85 @@ phones; record exact observed behavior and limitations in the validation file.
 
 ## Multiplayer integration
 
+Phase 09 adds full-catalog domain tests across every stage/owner, cooldown/power
+rejection, shutdown cancellation, clamping/zero-energy release and accepted-only
+deterministic traces. Baseline replay fixtures use engine v2 with unchanged
+commands/outcomes. Runner tests use an injected clock, at most five catch-up
+steps per turn, overload abort, exact 100ms steps/5Hz private snapshots, bounded
+slow-consumer queues, critical terminal state, sequence replay and running resume.
+Shared synthetic `phase09.json` running/ack/rejection fixtures round-trip in both
+languages. No backend simulation test sleeps for game time.
+
+Android Gameplay tests verify owned intent emission, pending guards, bounded
+10Hz slider conflation, shutdown discarding queued output, server reconciliation,
+no client clock/outcome, private recovery clearing and pause/terminal controls.
+Compose tests cover owned panels, inactive-tab badges and safe power feedback.
+The enabled live test exercises all nine actual actions, cross-station power
+rejection, private snapshots and running resume. A normal UI session uses separate
+app instances; emulator evidence cannot satisfy the pending real-phone gate.
+
+With the dev server on port 8765, run from `server/`:
+
+```bash
+uv run python examples/gameplay_smoke.py
+```
+
+It starts separate two-/three-controller rooms, checks nine actions, power
+rejections, matching public state at common revisions, owned-only station keys
+and shutdown, then leaves. Its global timeout is 20 seconds and it prints no
+raw frames/credentials. It finishes before the default first emergency slot.
+
+### Emergency checks (10)
+
+`test_emergency_rules.py` covers trigger/deadline/resource boundaries, concurrency,
+draw/ID order and paused/terminal behavior. Concrete frozen event cases and the
+seed-71 full-round trace are checked separately from historical core-only replays.
+`test_emergency_rooms.py` runs complete 2/3-player room owners with a fake clock,
+checking private allowlists, matching public views, critical events/counts and
+non-replay on state request. The shared phase10.json fixture is synthetic.
+
+The local CLI `examples/emergency_harness.py --seed 71 --profile default` uses
+ordinary production rules. `examples/emergency_smoke.py` runs complete two-/three-
+socket rounds and checks lifecycle/result equality without exporting private frames.
+For physical-client UI inspection, the documented opt-in `verification` profile
+provides longer windows and lower damage. Use normal Create/Join/Start/read/
+acknowledge, station switches and control intents on the actual clients. Wait
+for the complete roster before readying: every join resets readiness. Record
+each kind's resolution and failure separately in two- and three-player mode.
+An experimental distributed Compose UI driver did not produce a reliable full
+matrix and is retained only in ignored local investigation artifacts, not the
+included tests. See EMERGENCY_VALIDATION.md for its actual failures and partial
+observations. Scripted checks do not replace the pending human communication gate.
+
 By Phase 07, connect 2 and 3 real Android clients to one lobby. By Phase 11,
 exercise two seeded full rounds with simulated protocol clients and real-phone
 victory/defeat/rematch. By Phase 14, interrupt Wi-Fi, kill/recreate an app, replace
 a duplicate connection and restart the server. Observe what happens to the host
 and other phones; a single-device screenshot cannot prove multiplayer behavior.
 Keep local fixtures without real session tokens or personal player names.
+
+## Phase 11 observed lifecycle checks (2026-10-29)
+
+The repository checker, 1,036 backend tests, Ruff/mypy/package build and Android
+debug/lint/release Kotlin compile passed. There are 70 passing JVM tests and 27
+passing instrumented tests on each of three API 37 emulators (81 executions,
+including live-server networking; no physical phone selected). Final lint has
+0 errors and 14 retained warnings. Countdown consumes no gameplay time/RNG;
+terminal snapshots drive Results without a one-shot event.
+
+Sixty deterministic repeated room cycles cover victory, defeat and briefing abort
+with bounded tasks/queues/replies and clean close. Real-socket 2/3-client rooms
+each completed three seeded 60-second rounds, two rematches, countdown recovery,
+fresh action sequence and lobby reset. Separate normal 90-second emergency rounds
+also completed with synchronized results. Quiet-profile normal UI completed one
+two-emulator round and three three-emulator rounds with two rematches, matching
+Results and lobby readiness reset. These are scripted observations, not human
+coordination/balance evidence.
+
+Exact commands/configuration, initial resolved failures and remaining gates are
+in [ROUND_LIFECYCLE_VALIDATION.md](ROUND_LIFECYCLE_VALIDATION.md). Physical-phone
+testing is explicitly deferred; Phase 10's human gate is also pending. The Phase
+11 master-plan checkbox remains open, and the ledger was preserved this phase.
 
 ## Manual playtests (15)
 

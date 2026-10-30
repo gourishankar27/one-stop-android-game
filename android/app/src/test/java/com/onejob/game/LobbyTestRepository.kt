@@ -19,6 +19,9 @@ class LobbyTestRepository : GameRepository by UnavailableGameRepository() {
     var disconnects = 0
     var leaves = 0
     var starts = 0
+    var playAgains = 0
+    var returns = 0
+    var lifecycleResult = CompletableDeferred<CommandResult>().apply { complete(CommandResult.Accepted("again", Operation.PLAY_AGAIN)) }
     var leaveResult: CommandResult = CommandResult.Accepted("leave", Operation.LEAVE)
     val ready = mutableListOf<Boolean>()
     var readyResult = CompletableDeferred<CommandResult>().apply { complete(CommandResult.Accepted("ready", Operation.READY)) }
@@ -26,6 +29,8 @@ class LobbyTestRepository : GameRepository by UnavailableGameRepository() {
     override suspend fun join(roomCode: String, name: String): CommandResult { submittedCode = roomCode; return create(name) }
     override suspend fun setReady(ready: Boolean): CommandResult { this.ready += ready; return readyResult.await() }
     override suspend fun start(): CommandResult { starts++; return CommandResult.Rejected("start", RemoteCode.FEATURE_UNAVAILABLE) }
+    override suspend fun playAgain(): CommandResult { playAgains++; return lifecycleResult.await() }
+    override suspend fun returnToLobby(): CommandResult { returns++; return lifecycleResult.await() }
     override suspend fun leave(): CommandResult {
         leaves++; session.value = SessionState(); connection.value = ConnectionState(ConnectionStatus.DISCONNECTED)
         return leaveResult

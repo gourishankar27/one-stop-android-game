@@ -6,7 +6,8 @@ short round together.
 
 > Everyone has one job. Everything goes wrong at the same time.
 
-This repository contains the **initial foundation**, not a playable game.
+This repository contains a **developing gameplay prototype**; the complete party
+lifecycle and human playtest gates remain unfinished.
 Implemented: a packaged FastAPI service with `GET /health`, a Compose navigation
 shell, developer checks, architecture documents and phase plans 00–18.
 Phase 01 adds validated immutable Python domain values, including explicit
@@ -21,8 +22,14 @@ resume/snapshot recovery and an opt-in development connection check.
 Phase 07 binds name/code forms and the authoritative roster, host/ready/start/
 leave feedback to that repository. Phase 08 adds seeded private station assignment,
 owned role instructions, acknowledgement, pause/timeout/abort and a held briefing.
-Live socket gameplay, emergencies, remaining controls and gameplay screens are
-planned. See [role-system evidence](docs/ROLE_SYSTEM_VALIDATION.md).
+Phase 09 connects all nine station actions to a fixed-step room runner, private
+control panels, typed action feedback and a minimal server terminal summary.
+Phase 10 adds the three seeded cooperative emergencies and private station warnings.
+Phase 11 implements server countdown, stable Results and host rematch/lobby return.
+Its checks and deferred physical-phone gate are recorded in
+[ROUND_LIFECYCLE_VALIDATION.md](docs/ROUND_LIFECYCLE_VALIDATION.md).
+See [completed core gameplay checks](docs/CORE_GAMEPLAY_VALIDATION.md)
+and [role-system evidence](docs/ROLE_SYSTEM_VALIDATION.md).
 See [the progress ledger](plans/plans.md) for validation gates and next work.
 
 ## Layout

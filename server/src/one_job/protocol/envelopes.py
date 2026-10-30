@@ -10,6 +10,7 @@ from one_job.protocol.messages import (
     DTO,
     AckOperation,
     AckPayload,
+    ActionAckPayload,
     CreateRoomPayload,
     EmptyPayload,
     ErrorCode,
@@ -26,20 +27,19 @@ from one_job.protocol.messages import (
     error_payload,
 )
 from one_job.protocol.role_messages import (
+    ActionRejectedPayload,
     BriefingReadyPayload,
+    EmergencyEventPayload,
+    GameOverPayload,
     PlayerActionPayload,
     RoleAssignedPayload,
     RoleStatePayload,
 )
 
 MAX_FRAME_BYTES = 16 * 1024
-ReservedType = Literal[
-    "play_again",
-    "return_to_lobby",
-    "join_display",
-]
+ReservedType = Literal["join_display",]
 RESERVED_TYPES = frozenset(get_args(ReservedType))
-ROUND_TYPES = frozenset({"briefing_ready", "player_action"})
+ROUND_TYPES = frozenset({"briefing_ready", "player_action", "play_again", "return_to_lobby"})
 LOBBY_TYPES = frozenset(
     {
         "create_room",
@@ -137,6 +137,20 @@ class PlayerActionEnvelope(DTO):
     payload: PlayerActionPayload
 
 
+class PlayAgainEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["play_again"]
+    request_id: RequestId
+    payload: EmptyPayload
+
+
+class ReturnToLobbyEnvelope(DTO):
+    version: Literal[1]
+    type: Literal["return_to_lobby"]
+    request_id: RequestId
+    payload: EmptyPayload
+
+
 type LobbyMessage = (
     CreateRoomEnvelope
     | JoinRoomEnvelope
@@ -147,7 +161,13 @@ type LobbyMessage = (
     | RequestStateEnvelope
 )
 type ClientMessage = Annotated[
-    PingEnvelope | ReservedEnvelope | LobbyMessage | BriefingReadyEnvelope | PlayerActionEnvelope,
+    PingEnvelope
+    | ReservedEnvelope
+    | LobbyMessage
+    | BriefingReadyEnvelope
+    | PlayerActionEnvelope
+    | PlayAgainEnvelope
+    | ReturnToLobbyEnvelope,
     Field(discriminator="type"),
 ]
 
@@ -188,7 +208,15 @@ class AckEnvelope(DTO):
     type: Literal["ack"] = "ack"
     reply_to: RequestId
     room_revision: NonnegativeInt
-    payload: AckPayload
+    payload: AckPayload | ActionAckPayload
+
+
+class ActionRejectedEnvelope(DTO):
+    version: Literal[1] = 1
+    type: Literal["action_rejected"] = "action_rejected"
+    reply_to: RequestId
+    room_revision: NonnegativeInt
+    payload: ActionRejectedPayload
 
 
 class LobbyStateEnvelope(DTO):
@@ -217,6 +245,22 @@ class RoleAssignedEnvelope(DTO):
     payload: RoleAssignedPayload = Field(repr=False)
 
 
+class EmergencyEventEnvelope(DTO):
+    version: Literal[1] = 1
+    type: Literal["emergency_event"] = "emergency_event"
+    reply_to: None = None
+    room_revision: NonnegativeInt
+    payload: EmergencyEventPayload
+
+
+class GameOverEnvelope(DTO):
+    version: Literal[1] = 1
+    type: Literal["game_over"] = "game_over"
+    reply_to: None = None
+    room_revision: NonnegativeInt
+    payload: GameOverPayload
+
+
 class RoleStateEnvelope(DTO):
     version: Literal[1] = 1
     type: Literal["role_state"] = "role_state"
@@ -233,7 +277,10 @@ ServerMessage = Annotated[
     | AckEnvelope
     | LobbyStateEnvelope
     | RoleAssignedEnvelope
-    | RoleStateEnvelope,
+    | RoleStateEnvelope
+    | EmergencyEventEnvelope
+    | GameOverEnvelope
+    | ActionRejectedEnvelope,
     Field(discriminator="type"),
 ]
 

@@ -84,7 +84,18 @@ class ProtocolCodec {
                 require(payload.kind == "player" && code.matches(payload.room_code) && uuid.matches(payload.player_id))
                 require(scalarLength(payload.resume_token) in 1..256)
             }
-            is ServerMessage.Ack -> require(message.reply_to != null && message.room_revision != null)
+            is ServerMessage.Ack -> {
+                require(message.reply_to != null && message.room_revision != null)
+                if (message.payload.operation == "player_action") {
+                    require((message.payload.client_action_seq ?: 0) >= 1 &&
+                        (message.payload.applied_tick ?: -1) >= 0)
+                } else require(message.payload.client_action_seq == null && message.payload.applied_tick == null)
+            }
+            is ServerMessage.ActionRejected -> {
+                require(message.reply_to != null && message.room_revision != null)
+                require(message.payload.client_action_seq >= 1 && uuid.matches(message.payload.round_id))
+                require(message.payload.code.isNotBlank())
+            }
             is ServerMessage.Error -> require(message.payload.code.isNotBlank())
             is ServerMessage.Lobby -> {
                 val payload = message.payload
@@ -96,6 +107,15 @@ class ProtocolCodec {
                 require(payload.host_player_id == null || payload.host_player_id in ids)
             }
             is ServerMessage.PublicState -> { require(message.room_revision != null); validatePublic(message.payload.public) }
+            is ServerMessage.EmergencyEvent -> {
+                require(message.reply_to == null && message.room_revision != null)
+                require(uuid.matches(message.payload.round_id) && message.payload.emergency_id > 0)
+                require(message.payload.kind in emergencyKinds && message.payload.status in setOf("started", "resolved", "failed"))
+            }
+            is ServerMessage.GameOver -> {
+                require(message.reply_to == null && message.room_revision != null && uuid.matches(message.payload.round_id))
+                validateResult(message.payload.result)
+            }
             is ServerMessage.RoleAssigned -> {
                 require(message.reply_to == null)
                 val assigned = message.payload
@@ -114,7 +134,8 @@ class ProtocolCodec {
                 require(briefing.remaining_ms >= 0 && briefing.waiting_player_ids.size <= 3)
                 require(briefing.waiting_player_ids.all { uuid.matches(it) } && briefing.waiting_player_ids.distinct().size == briefing.waiting_player_ids.size)
                 require(briefing.complete == briefing.waiting_player_ids.isEmpty())
-                require(briefing.held_for_gameplay == (briefing.complete && payload.public.stage !in setOf("finished", "aborted")))
+                require(!briefing.held_for_gameplay || (briefing.complete &&
+                    (payload.public.stage == "briefing" || payload.public.paused_from == "briefing")))
                 payload.stations.pilot?.let { view ->
                     require(view.evade_remaining_ticks >= 0 && view.cooldowns.move_lane >= 0 && view.cooldowns.evade >= 0)
                     require(view.hazards.all { it.emergency_id > 0 && it.deadline_remaining_ms >= 0 })
@@ -144,8 +165,22 @@ class ProtocolCodec {
         require(view.hull_percent in 0..100 && view.shield_percent in 0..100)
         require(view.countdown_remaining_ms == null || view.countdown_remaining_ms >= 0)
         require(view.paused_from == null || view.paused_from in stages)
-        require(view.warnings.all { it.emergency_id >= 1 })
-        view.result?.let { require(it.survived_ms >= 0 && it.final_hull_percent in 0..100 && it.resolved_count >= 0 && it.failed_count >= 0) }
+        require(view.warnings.size <= 2 && view.warnings.map { it.emergency_id }.distinct().size == view.warnings.size)
+        require(view.warnings.all { it.emergency_id >= 1 && it.kind in emergencyKinds && it.label.isNotBlank() && scalarLength(it.label) <= 64 })
+        view.result?.let(::validateResult)
+    }
+
+    private fun validateResult(result: RoundResult) {
+        require(result.survived_ms in 0..120_000 && result.survived_ms % 100 == 0L)
+        require(result.final_hull_percent in 0..100 && result.resolved_count >= 0 && result.failed_count >= 0)
+        require(result.players.size in 2..3 && result.players.map { it.player_id.lowercase() }.distinct().size == result.players.size)
+        require(result.players.all { uuid.matches(it.player_id) && nameValid(it.name) })
+        when (result.outcome) {
+            "victory" -> require(result.reason == "survived" && result.survived_ms >= 60_000)
+            "defeat" -> require(result.reason == "hull_destroyed" && result.final_hull_percent == 0)
+            "aborted" -> require(result.reason in setOf("disconnect_timeout", "player_left", "briefing_timeout", "server_overload"))
+            else -> error("Invalid outcome")
+        }
     }
 
     /** Bound parser nesting and reject duplicate keys, including escaped aliases. */
@@ -193,7 +228,8 @@ class ProtocolCodec {
         private val code = Regex("[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}")
         private val uuid = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
         private val stages = setOf("lobby", "briefing", "countdown", "running", "paused", "finished", "aborted")
-        private val serverKinds = setOf("pong", "session_accepted", "ack", "error", "lobby_state", "public_state", "role_assigned", "role_state")
+        private val serverKinds = setOf("pong", "session_accepted", "ack", "action_rejected", "error", "lobby_state", "public_state", "role_assigned", "role_state", "emergency_event", "game_over")
+        private val emergencyKinds = setOf("asteroid", "overheating", "shield_overload")
 
         private fun scalarLength(value: String): Int {
             var index = 0

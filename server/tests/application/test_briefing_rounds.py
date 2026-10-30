@@ -6,6 +6,7 @@ from uuid import UUID
 import pytest
 
 from one_job.application.rooms import RoomRegistry
+from one_job.domain.config import GameConfig
 from one_job.domain.types import PlayerId, Role
 from one_job.protocol.envelopes import BriefingReadyEnvelope, encode_message
 from one_job.protocol.messages import ErrorCode
@@ -18,9 +19,12 @@ from tests.support import owned_tasks
 async def started(clock):
     registries = []
 
-    async def start(count=3, seed=7):
+    async def start(count=3, seed=7, config=None):
         registry = RoomRegistry(
-            clock, seed_factory=lambda: seed, round_id_factory=lambda: UUID(int=99)
+            clock,
+            seed_factory=lambda: seed,
+            round_id_factory=lambda: UUID(int=99),
+            game_config=config or GameConfig(emergencies_enabled=False),
         )
         registries.append(registry)
         peers = [Peer(index + 1) for index in range(count)]
@@ -122,8 +126,8 @@ async def test_exact_timeout_aborts_without_a_simulation_tick(clock, started):
     assert room.round.engine.snapshot().round.result.reason == "briefing_timeout"
     assert room.round.engine.snapshot().tick_index == 0
     for peer in peers:
-        assert peer.messages[-1].type == "role_state"
-        assert peer.messages[-1].payload.public.result.reason == "briefing_timeout"
+        assert role_frames(peer)[-1].payload.public.result.reason == "briefing_timeout"
+        assert peer.messages[-1].type == "game_over"
 
 
 async def test_acknowledgement_crossing_deadline_broadcasts_abort_before_timer_runs(clock, started):
@@ -157,9 +161,7 @@ async def test_acknowledgement_crossing_deadline_broadcasts_abort_before_timer_r
 
 
 @pytest.mark.parametrize("count", [2, 3])
-async def test_all_acknowledgements_hold_indefinitely_without_running_or_countdown(
-    clock, started, count
-):
+async def test_all_acknowledgements_enter_countdown_without_gameplay_ticks(clock, started, count):
     registry, room, peers, _ = await started(count)
     round_id = str(room.round.round_id)
     for index, peer in enumerate(peers):
@@ -174,16 +176,20 @@ async def test_all_acknowledgements_hold_indefinitely_without_running_or_countdo
         is None
     )
     assert room.revision == revision
-    await clock.advance(120)
+    await clock.advance(0.2)
     await registry.synchronize()
     state = room.round.engine.snapshot()
-    assert state.round.stage == "briefing" and state.tick_index == 0
-    assert state.round.countdown_remaining_ms is None
+    assert state.round.stage == "countdown" and state.tick_index == 0
+    assert state.round.countdown_remaining_ms == 2800
     for peer in peers:
         await command(registry, peer, "request_state", "held-state")
         briefing = peer.messages[-1].payload.briefing
-        assert briefing.acknowledged and briefing.complete and briefing.held_for_gameplay
+        assert briefing.acknowledged and briefing.complete and not briefing.held_for_gameplay
         assert briefing.waiting_player_ids == ()
+    for _ in range(28):
+        await clock.advance(0.1)
+        await registry.synchronize()
+    assert room.stage == "running" and room.round.engine.snapshot().tick_index == 0
 
 
 async def test_pause_suspends_deadline_and_resume_restores_private_briefing(clock, started):
@@ -261,7 +267,7 @@ async def test_stale_round_wrong_role_and_owned_actions_are_rejected_without_mut
                 "player_action",
                 f"action-{index}",
                 round_id=round_id,
-                client_action_seq=1,
+                client_action_seq=index + 1,
                 action=action,
             )
             == code

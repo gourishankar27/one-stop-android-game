@@ -6,8 +6,9 @@ import com.onejob.game.data.protocol.LobbyPayload
 import com.onejob.game.data.protocol.PublicRound
 import com.onejob.game.data.protocol.RoleAssignedPayload
 import com.onejob.game.data.protocol.RoleStatePayload
+import com.onejob.game.data.protocol.EmergencyEventPayload
 
-enum class Operation { CONNECT, PING, CREATE, JOIN, RESUME, READY, START, STATE, LEAVE, ACTION, BRIEFING }
+enum class Operation { CONNECT, PING, CREATE, JOIN, RESUME, READY, START, STATE, LEAVE, ACTION, BRIEFING, PLAY_AGAIN, RETURN_TO_LOBBY }
 enum class ConnectionProblem {
     CONFIGURATION, NETWORK, BACKPRESSURE, COMMAND_UNCERTAIN, HEARTBEAT_TIMEOUT,
     PROTOCOL, UNSUPPORTED_VERSION, RECONNECT_EXHAUSTED, ADMISSION_REQUIRED, SNAPSHOT_TIMEOUT,
@@ -35,11 +36,13 @@ data class SessionState(
     val publicRound: PublicRound? = null,
     val assigned: RoleAssignedPayload? = null,
     val roleState: RoleStatePayload? = null,
+    val emergencyEvent: EmergencyEventPayload? = null,
 )
 
 sealed interface CommandResult {
     data object LeftLocally : CommandResult
-    data class Accepted(val requestId: String, val operation: Operation, val revision: Long? = null) : CommandResult
+    data class Accepted(val requestId: String, val operation: Operation, val revision: Long? = null,
+                        val sequence: Long? = null, val appliedTick: Long? = null) : CommandResult
     data class Rejected(val requestId: String, val code: RemoteCode) : CommandResult
     data class Uncertain(val requestId: String, val operation: Operation) : CommandResult
     data class NotSent(val problem: ConnectionProblem) : CommandResult
@@ -83,4 +86,11 @@ internal class RevisionGate {
         return true
     }
     fun clear() { revisions.clear(); roomRevisions.clear(); activeRound = null; retiredRounds.clear() }
+    fun retireRound() {
+        activeRound?.let {
+            retiredRounds.addLast(it)
+            if (retiredRounds.size > 16) retiredRounds.removeFirst()
+        }
+        activeRound = null
+    }
 }

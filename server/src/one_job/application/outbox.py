@@ -37,6 +37,9 @@ class Outbox:
         if (
             isinstance(message, (PublicStateEnvelope, LobbyStateEnvelope, RoleStateEnvelope))
             and message.reply_to is None
+            and not (
+                isinstance(message, RoleStateEnvelope) and message.payload.public.result is not None
+            )
         ):
             for item in tuple(self._items):
                 old = item.message

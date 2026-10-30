@@ -40,6 +40,10 @@ sealed class ClientMessage {
     data class State(override val request_id: String, val payload: EmptyPayload = EmptyPayload()) : ClientMessage()
     @Serializable @SerialName("start_game")
     data class Start(override val request_id: String, val payload: EmptyPayload = EmptyPayload()) : ClientMessage()
+    @Serializable @SerialName("play_again")
+    data class PlayAgain(override val request_id: String, val payload: EmptyPayload = EmptyPayload()) : ClientMessage()
+    @Serializable @SerialName("return_to_lobby")
+    data class ReturnToLobby(override val request_id: String, val payload: EmptyPayload = EmptyPayload()) : ClientMessage()
     @Serializable @SerialName("briefing_ready")
     data class Briefing(override val request_id: String, val payload: RoundPayload) : ClientMessage()
     @Serializable @SerialName("player_action")
@@ -72,6 +76,9 @@ sealed class ClientMessage {
 @Serializable data class ErrorPayload(val code: String, val message: String, val retryable: Boolean) {
     override fun toString() = "ErrorPayload(redacted)"
 }
+@Serializable data class ActionRejectedPayload(
+    val code: String, val message: String, val client_action_seq: Long, val round_id: String,
+) { override fun toString() = "ActionRejectedPayload(redacted)" }
 @Serializable data class LobbyPlayer(val player_id: String, val name: String, val connected: Boolean, val ready: Boolean)
 @Serializable data class LobbyPayload(
     val room_code: String, val stage: String, val host_player_id: String?,
@@ -84,6 +91,10 @@ sealed class ClientMessage {
     val shield_percent: Int, val warnings: List<PublicWarning>, val result: RoundResult?,
 )
 @Serializable data class PublicWarning(val emergency_id: Long, val kind: String, val label: String)
+@Serializable data class EmergencyEventPayload(
+    val round_id: String, val emergency_id: Long, val kind: String, val status: String,
+)
+@Serializable data class GameOverPayload(val round_id: String, val result: RoundResult)
 @Serializable data class ResultPlayer(val player_id: String, val name: String)
 @Serializable data class RoundResult(
     val outcome: String, val reason: String, val survived_ms: Long, val final_hull_percent: Int,
@@ -104,6 +115,9 @@ sealed class ClientMessage {
     @Serializable @SerialName("ack") data class Ack(
         override val version: Int, override val reply_to: String?, override val room_revision: Long?, val payload: AckPayload,
     ) : ServerMessage
+    @Serializable @SerialName("action_rejected") data class ActionRejected(
+        override val version: Int, override val reply_to: String?, override val room_revision: Long?, val payload: ActionRejectedPayload,
+    ) : ServerMessage
     @Serializable @SerialName("error") data class Error(
         override val version: Int, override val reply_to: String?, override val room_revision: Long?, val payload: ErrorPayload,
     ) : ServerMessage
@@ -118,5 +132,11 @@ sealed class ClientMessage {
     ) : ServerMessage
     @Serializable @SerialName("role_state") data class RoleState(
         override val version: Int, override val reply_to: String?, override val room_revision: Long?, val payload: RoleStatePayload,
+    ) : ServerMessage
+    @Serializable @SerialName("emergency_event") data class EmergencyEvent(
+        override val version: Int, override val reply_to: String?, override val room_revision: Long?, val payload: EmergencyEventPayload,
+    ) : ServerMessage
+    @Serializable @SerialName("game_over") data class GameOver(
+        override val version: Int, override val reply_to: String?, override val room_revision: Long?, val payload: GameOverPayload,
     ) : ServerMessage
 }

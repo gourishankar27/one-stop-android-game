@@ -15,7 +15,8 @@ COUNTDOWN_MS = 3000
 
 @dataclass(frozen=True, slots=True)
 class GameConfig:
-    version: str = "spaceship-v1"
+    version: str = "spaceship-v2"
+    emergencies_enabled: bool = True
     round_duration_ms: int = 90_000
     initial_hull: int = 1000
     initial_shield_energy: int = 600
@@ -84,6 +85,7 @@ class GameConfig:
         enumeration(self.initial_lane, Lane, "initial_lane")
         enumeration(self.initial_shield_facing, ShieldFacing, "initial_shield_facing")
         boolean(self.initial_shield_active, "initial_shield_active")
+        boolean(self.emergencies_enabled, "emergencies_enabled")
         integer(self.initial_hull, "initial_hull", 1, RESOURCE_MAX)
         for name in (
             "initial_shield_energy",

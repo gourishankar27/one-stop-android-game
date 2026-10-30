@@ -10,7 +10,7 @@ class ProtocolCodecTest {
 
     @Test
     fun sharedPythonFixturesDecodeAndOutgoingMessagesMatchExactly() {
-        for (file in listOf("phase03.json", "phase04.json", "phase06.json", "phase08.json")) {
+        for (file in listOf("phase03.json", "phase04.json", "phase06.json", "phase08.json", "phase09.json", "phase10.json", "phase11.json")) {
             val text = javaClass.classLoader!!.getResourceAsStream(file)!!.bufferedReader().use { it.readText() }
             for (element in codec.json.parseToJsonElement(text).jsonArray) {
                 val request = element.jsonObject.getValue("request")
@@ -27,6 +27,16 @@ class ProtocolCodecTest {
                     assertEquals(event, reencoder.encodeToJsonElement<ServerMessage>((decodedEvent as DecodedFrame.Message).message))
                 }
             }
+        }
+    }
+
+    @Test fun emergencyEventsHaveOnlySharedLabelsAndStrictLifecycle() {
+        val valid = """{"version":1,"type":"emergency_event","reply_to":null,"room_revision":10,"payload":{"round_id":"00000000-0000-0000-0000-000000000099","emergency_id":1,"kind":"asteroid","status":"started"}}"""
+        val message = (codec.decode(valid) as DecodedFrame.Message).message as ServerMessage.EmergencyEvent
+        assertEquals("started", message.payload.status)
+        for (invalid in listOf(valid.replace("started","secret"), valid.replace("asteroid","other"),
+            valid.replace("\"emergency_id\":1", "\"emergency_id\":0"), valid.replace("\"reply_to\":null","\"reply_to\":\"request\""))) {
+            assertTrue(codec.decode(invalid) is DecodedFrame.Invalid)
         }
     }
 

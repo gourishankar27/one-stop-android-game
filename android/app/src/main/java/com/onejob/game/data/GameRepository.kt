@@ -22,6 +22,10 @@ enum class ConnectionStatus {
 
 /** Typed client intents and allowlisted authoritative snapshots; no client simulation. */
 interface GameRepository : Closeable {
+    suspend fun playAgain(): CommandResult = CommandResult.NotSent(ConnectionProblem.CONFIGURATION)
+    suspend fun returnToLobby(): CommandResult = CommandResult.NotSent(ConnectionProblem.CONFIGURATION)
+    suspend fun performAction(roundId: String, action: PlayerAction): CommandResult =
+        CommandResult.NotSent(ConnectionProblem.CONFIGURATION)
     val connectionStatus: StateFlow<ConnectionStatus>
     val connection: StateFlow<ConnectionState>
     val session: StateFlow<SessionState>

@@ -6,7 +6,15 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, Field, StrictBool, StrictInt, StrictStr, model_validator
 
-from one_job.protocol.messages import DTO, ActionInput, NonnegativeInt, Percent, PublicRoundView
+from one_job.protocol.messages import (
+    DTO,
+    ActionInput,
+    ErrorCode,
+    NonnegativeInt,
+    Percent,
+    PublicRoundView,
+    ResultView,
+)
 
 RoleName = Literal["pilot", "engineer", "shields"]
 
@@ -30,6 +38,25 @@ class PlayerActionPayload(DTO):
     round_id: RoundIdentifier
     client_action_seq: Annotated[StrictInt, Field(ge=1)]
     action: ActionInput
+
+
+class ActionRejectedPayload(DTO):
+    code: ErrorCode
+    message: StrictStr
+    client_action_seq: Annotated[StrictInt, Field(ge=1)]
+    round_id: RoundIdentifier
+
+
+class EmergencyEventPayload(DTO):
+    round_id: RoundIdentifier
+    emergency_id: Annotated[StrictInt, Field(ge=1)]
+    kind: Literal["asteroid", "overheating", "shield_overload"]
+    status: Literal["started", "resolved", "failed"]
+
+
+class GameOverPayload(DTO):
+    round_id: RoundIdentifier
+    result: ResultView
 
 
 class RoleInstruction(DTO):

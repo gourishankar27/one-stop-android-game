@@ -36,7 +36,7 @@ class SocketGameRepository(
     private enum class Purpose { PUBLIC, HEARTBEAT, RESUME, SYNC, LEAVE }
     private sealed interface Event {
         class Connect(val result: CompletableDeferred<CommandResult>) : Event
-        class Request(val message: ClientMessage, val result: CompletableDeferred<CommandResult>) : Event
+        class Request(val message: ClientMessage, val result: CompletableDeferred<CommandResult>, val automaticSequence: Boolean = false) : Event
         class Leave(val result: CompletableDeferred<CommandResult>) : Event
         class Disconnect(val result: CompletableDeferred<CommandResult>) : Event
         data class Incoming(val generation: Long, val event: SocketEvent) : Event
@@ -52,6 +52,7 @@ class SocketGameRepository(
         val operation: Operation, val purpose: Purpose, val timer: Job,
         val result: CompletableDeferred<CommandResult>?, val nonce: String? = null,
         val actionSequence: Long? = null,
+        val actionRound: String? = null,
     )
 
     private val owner = SupervisorJob(parentScope.coroutineContext[Job])
@@ -81,13 +82,15 @@ class SocketGameRepository(
     private var retryAttempt = 0
     private var syncId: String? = null
     private var connectReply: CompletableDeferred<CommandResult>? = null
+    private var actionRound: String? = null
+    private var actionSequence = 0L
 
     private val worker = scope.launch {
         try {
             for (event in events) {
                 when (event) {
                     is Event.Connect -> onConnect(event.result)
-                    is Event.Request -> onRequest(event.message, event.result)
+                    is Event.Request -> onRequest(event.message, event.result, event.automaticSequence)
                     is Event.Leave -> onLeave(event.result)
                     is Event.Disconnect -> {
                         resetMembership()
@@ -143,12 +146,17 @@ class SocketGameRepository(
     }
     override suspend fun setReady(ready: Boolean): CommandResult = request { ClientMessage.Ready(it, ReadyPayload(ready)) }
     override suspend fun start(): CommandResult = request { ClientMessage.Start(it) }
+    override suspend fun playAgain(): CommandResult = request { ClientMessage.PlayAgain(it) }
+    override suspend fun returnToLobby(): CommandResult = request { ClientMessage.ReturnToLobby(it) }
     override suspend fun requestState(): CommandResult = request { ClientMessage.State(it) }
     override suspend fun acknowledgeBriefing(roundId: String): CommandResult = request {
         ClientMessage.Briefing(it, RoundPayload(roundId))
     }
     override suspend fun submitAction(roundId: String, sequence: Long, action: PlayerAction): CommandResult = request {
         ClientMessage.Action(it, ActionPayload(roundId, sequence, action))
+    }
+    override suspend fun performAction(roundId: String, action: PlayerAction): CommandResult = request(automaticSequence = true) {
+        ClientMessage.Action(it, ActionPayload(roundId, 1, action))
     }
     override suspend fun leave(): CommandResult = ask { Event.Leave(it) }
     override suspend fun disconnect(): CommandResult = ask { Event.Disconnect(it) }
@@ -157,12 +165,12 @@ class SocketGameRepository(
 
     private suspend fun connectedRequest(factory: (String) -> ClientMessage): CommandResult {
         val connected = connect()
-        return if (connected is CommandResult.Accepted) request(factory) else connected
+        return if (connected is CommandResult.Accepted) request(factory = factory) else connected
     }
-    private suspend fun request(factory: (String) -> ClientMessage): CommandResult {
+    private suspend fun request(automaticSequence: Boolean = false, factory: (String) -> ClientMessage): CommandResult {
         val message = factory(newId())
         return try {
-            ask { Event.Request(message, it) }
+            ask { Event.Request(message, it, automaticSequence) }
         } catch (cancelled: CancellationException) {
             events.trySend(Event.CancelRequest(message.request_id))
             throw cancelled
@@ -263,7 +271,7 @@ class SocketGameRepository(
         }
     }
 
-    private fun onRequest(message: ClientMessage, result: CompletableDeferred<CommandResult>) {
+    private fun onRequest(message: ClientMessage, result: CompletableDeferred<CommandResult>, automaticSequence: Boolean) {
         if (result.isCancelled) return
         if (!opened || syncId != null || recoveryDeadline != null) {
             result.complete(CommandResult.NotSent(ConnectionProblem.NETWORK))
@@ -273,7 +281,19 @@ class SocketGameRepository(
             result.complete(CommandResult.NotSent(ConnectionProblem.ADMISSION_REQUIRED))
             return
         }
-        send(message, Purpose.PUBLIC, result)
+        var outgoing = message
+        if (message is ClientMessage.Action && message.payload.round_id == _session.value.roleState?.public?.round_id) {
+            if (actionRound != message.payload.round_id) { actionRound = message.payload.round_id; actionSequence = 0 }
+            if (automaticSequence) {
+                if (actionSequence == Long.MAX_VALUE) {
+                    result.complete(CommandResult.Rejected(message.request_id, RemoteCode.STALE_ACTION)); return
+                }
+                outgoing = message.copy(payload = message.payload.copy(client_action_seq = ++actionSequence))
+            } else actionSequence = maxOf(actionSequence, message.payload.client_action_seq)
+        } else if (automaticSequence) {
+            result.complete(CommandResult.Rejected(message.request_id, RemoteCode.STALE_ROUND)); return
+        }
+        send(outgoing, Purpose.PUBLIC, result)
     }
 
     private fun send(message: ClientMessage, purpose: Purpose, result: CompletableDeferred<CommandResult>? = null) {
@@ -298,6 +318,7 @@ class SocketGameRepository(
             operation(message), purpose, timer, result,
             (message as? ClientMessage.Ping)?.payload?.nonce,
             (message as? ClientMessage.Action)?.payload?.client_action_seq,
+            (message as? ClientMessage.Action)?.payload?.round_id,
         )
         if (purpose == Purpose.SYNC) syncId = message.request_id
     }
@@ -327,7 +348,15 @@ class SocketGameRepository(
                 if (request != null && request.operation != Operation.STATE) { protocolFailure(ProtocolIssue.MALFORMED); return }
                 if (request != null && message.payload.stage != "lobby") { protocolFailure(ProtocolIssue.MALFORMED); return }
                 if (revisions.accept("lobby_state", identity.roomCode, null, message.room_revision!!)) {
-                    _session.value = _session.value.copy(lobby = message.payload)
+                    val previous = _session.value
+                    val resetsRound = message.payload.stage == "lobby" ||
+                        (message.payload.stage == "briefing" && previous.lobby?.stage in setOf("lobby", "finished", "aborted"))
+                    if (resetsRound) {
+                        revisions.retireRound()
+                        actionRound = null; actionSequence = 0
+                        _session.value = previous.copy(lobby = message.payload, publicRound = null,
+                            assigned = null, roleState = null, emergencyEvent = null)
+                    } else _session.value = previous.copy(lobby = message.payload)
                 }
                 if (request != null) {
                     if (request.purpose == Purpose.SYNC && _session.value.lobby == null) {
@@ -350,7 +379,8 @@ class SocketGameRepository(
                 if (revisions.accept("role_assigned", identity.roomCode, assigned.round_id, message.room_revision!!)) {
                     _session.value = _session.value.copy(assigned = assigned,
                         roleState = _session.value.roleState?.takeIf { it.public.round_id == assigned.round_id },
-                        publicRound = _session.value.publicRound?.takeIf { it.round_id == assigned.round_id })
+                        publicRound = _session.value.publicRound?.takeIf { it.round_id == assigned.round_id },
+                        emergencyEvent = _session.value.emergencyEvent?.takeIf { it.round_id == assigned.round_id })
                 }
             }
             is ServerMessage.RoleState -> {
@@ -380,6 +410,27 @@ class SocketGameRepository(
                 if (request.operation != Operation.PING || request.nonce != message.payload.nonce) { protocolFailure(ProtocolIssue.MALFORMED); return }
                 complete(message, request)
             }
+            is ServerMessage.EmergencyEvent -> {
+                // Keep only the latest shared event. The full server snapshot owns
+                // active warnings; an event never infers a local ship or round outcome.
+                if (request != null) { protocolFailure(ProtocolIssue.MALFORMED); return }
+                val identity = credentials.value?.identity ?: return
+                if (_session.value.assigned?.round_id != message.payload.round_id) return
+                if (revisions.accept("emergency_event-${message.payload.emergency_id}-${message.payload.status}",
+                    identity.roomCode, message.payload.round_id, message.room_revision!!)) {
+                    val previous = _session.value.emergencyEvent
+                    if (message.payload.status != "started" || previous == null || previous.status == "started") {
+                        _session.value = _session.value.copy(emergencyEvent = message.payload)
+                    }
+                }
+            }
+            is ServerMessage.GameOver -> {
+                // Result navigation requires the complete authoritative role snapshot.
+                // This one-shot event cannot populate or alter ship/result state.
+                val identity = credentials.value?.identity ?: return
+                if (_session.value.assigned?.round_id != message.payload.round_id) return
+                revisions.accept("game_over", identity.roomCode, message.payload.round_id, message.room_revision!!)
+            }
             is ServerMessage.Ack -> {
                 if (request == null) return
                 if (message.payload.operation != wireOperation(request.operation) ||
@@ -388,6 +439,17 @@ class SocketGameRepository(
                 }
                 if (request.purpose == Purpose.LEAVE) { stopTransport(); state(ConnectionStatus.DISCONNECTED) }
                 complete(message, request)
+            }
+            is ServerMessage.ActionRejected -> {
+                if (request == null) return
+                if (request.operation != Operation.ACTION ||
+                    request.actionSequence != message.payload.client_action_seq ||
+                    request.actionRound != message.payload.round_id) {
+                    protocolFailure(ProtocolIssue.MALFORMED); return
+                }
+                pending.remove(message.reply_to)?.timer?.cancel()
+                request.result?.complete(CommandResult.Rejected(message.reply_to!!,
+                    RemoteCode.fromWire(message.payload.code)))
             }
             is ServerMessage.Error -> {
                 val code = RemoteCode.fromWire(message.payload.code)
@@ -411,7 +473,9 @@ class SocketGameRepository(
 
     private fun complete(message: ServerMessage, request: Pending) {
         pending.remove(message.reply_to)?.timer?.cancel()
-        request.result?.complete(CommandResult.Accepted(message.reply_to!!, request.operation, message.room_revision))
+        val action = (message as? ServerMessage.Ack)?.payload
+        request.result?.complete(CommandResult.Accepted(message.reply_to!!, request.operation,
+            message.room_revision, action?.client_action_seq, action?.applied_tick))
     }
     private fun synchronize() {
         if (syncId == null && opened) send(ClientMessage.State(newId()), Purpose.SYNC)
@@ -443,7 +507,7 @@ class SocketGameRepository(
     }
 
     private fun protocolFailure(issue: ProtocolIssue) {
-        _session.value = _session.value.copy(lobby = null, publicRound = null, assigned = null, roleState = null)
+        _session.value = _session.value.copy(lobby = null, publicRound = null, assigned = null, roleState = null, emergencyEvent = null)
         revisions.clear()
         state(ConnectionStatus.PROTOCOL_ERROR, if (issue == ProtocolIssue.UNSUPPORTED_VERSION) ConnectionProblem.UNSUPPORTED_VERSION else ConnectionProblem.PROTOCOL)
         if (issue == ProtocolIssue.UNKNOWN_TYPE && credentials.value != null && syncId == null && opened) {
@@ -490,6 +554,7 @@ class SocketGameRepository(
         state(ConnectionStatus.SESSION_EXPIRED)
     }
     private fun resetMembership() {
+        actionRound = null; actionSequence = 0
         credentials.clear()
         _session.value = SessionState()
         revisions.clear()
@@ -526,6 +591,8 @@ class SocketGameRepository(
         is ClientMessage.Resume -> Operation.RESUME
         is ClientMessage.Ready -> Operation.READY
         is ClientMessage.Start -> Operation.START
+        is ClientMessage.PlayAgain -> Operation.PLAY_AGAIN
+        is ClientMessage.ReturnToLobby -> Operation.RETURN_TO_LOBBY
         is ClientMessage.State -> Operation.STATE
         is ClientMessage.Leave -> Operation.LEAVE
         is ClientMessage.Action -> Operation.ACTION
@@ -536,6 +603,8 @@ class SocketGameRepository(
         Operation.LEAVE -> "leave_room"
         Operation.ACTION -> "player_action"
         Operation.START -> "start_game"
+        Operation.PLAY_AGAIN -> "play_again"
+        Operation.RETURN_TO_LOBBY -> "return_to_lobby"
         else -> ""
     }
 }

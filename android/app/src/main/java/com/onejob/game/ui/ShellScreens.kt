@@ -70,15 +70,6 @@ fun ShellHome(
         Button(onClick = { onNavigate(AppDestination.JOIN) }, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.join_setup))
         }
-        Text(stringResource(R.string.explore_previews), style = MaterialTheme.typography.titleMedium)
-        for ((destination, label) in listOf(
-            AppDestination.GAMEPLAY to R.string.preview_gameplay,
-            AppDestination.RESULTS to R.string.preview_results,
-        )) {
-            OutlinedButton(onClick = { onNavigate(destination) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(label))
-            }
-        }
     }
 }
 

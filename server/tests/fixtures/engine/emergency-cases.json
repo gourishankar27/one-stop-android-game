@@ -1,0 +1,14 @@
+{
+  "engine_version": "spaceship-engine-v3",
+  "config_version": "spaceship-v2",
+  "cases": [
+    {"name":"asteroid-maneuver","ticks":2,"ship":{"engine_output":60,"lane":"left","shield_active":true,"shield_facing":"left"},"events":[{"id":1,"kind":"asteroid","lane":"center","facing":"left"}],"expected":{"statuses":["resolved"],"hull":1000,"energy":600,"temperature":300}},
+    {"name":"asteroid-shield","ticks":2,"ship":{"shield_active":true,"shield_facing":"left","shield_energy":200},"events":[{"id":1,"kind":"asteroid","lane":"center","facing":"left"}],"expected":{"statuses":["resolved"],"hull":1000,"energy":0,"temperature":300}},
+    {"name":"asteroid-failure","ticks":2,"ship":{},"events":[{"id":1,"kind":"asteroid","lane":"center","facing":"left"}],"expected":{"statuses":["failed"],"hull":750,"energy":600,"temperature":300}},
+    {"name":"overheat-success","ticks":2,"ship":{"temperature":550,"engine_output":50},"events":[{"id":1,"kind":"overheating"}],"expected":{"statuses":["resolved"],"hull":1000,"energy":600,"temperature":550}},
+    {"name":"overheat-failure","ticks":2,"ship":{"temperature":800,"engine_output":60},"events":[{"id":1,"kind":"overheating"}],"expected":{"statuses":["failed"],"hull":800,"energy":600,"temperature":650}},
+    {"name":"overload-success","ticks":2,"ship":{"engine_output":45},"events":[{"id":1,"kind":"shield_overload","hold":2}],"expected":{"statuses":["resolved"],"hull":1000,"energy":600,"temperature":300}},
+    {"name":"overload-failure","ticks":2,"ship":{"shield_active":true},"events":[{"id":1,"kind":"shield_overload","hold":2}],"expected":{"statuses":["failed"],"hull":900,"energy":0,"temperature":300}},
+    {"name":"simultaneous-id-order","ticks":2,"ship":{"shield_active":true,"shield_facing":"left"},"events":[{"id":2,"kind":"asteroid","lane":"center","facing":"left"},{"id":1,"kind":"shield_overload","hold":2}],"expected":{"statuses":["failed","failed"],"hull":650,"energy":0,"temperature":300}}
+  ]
+}

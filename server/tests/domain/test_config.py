@@ -10,7 +10,7 @@ from one_job.domain.types import Lane, ShieldFacing
 def test_defaults_match_initial_spaceship_values() -> None:
     config = GameConfig()
     ship = ShipState.from_config(config)
-    assert config.version == "spaceship-v1"
+    assert config.version == "spaceship-v2" and config.emergencies_enabled
     assert (TICK_MS, config.round_duration_ms, config.duration_ticks) == (100, 90_000, 900)
     assert (ship.hull, ship.shield_energy, ship.engine_output, ship.temperature) == (
         1000,
@@ -105,6 +105,8 @@ def test_equal_interval_endpoints_and_resource_edges_are_valid() -> None:
         {"overheat_failure_temperature": 800},
         {"overheat_trigger_temperature": 1000, "critical_temperature": 999},
         {"initial_shield_active": 1},
+        {"emergencies_enabled": 1},
+        {"emergencies_enabled": "false"},
         {"initial_shield_active": True, "initial_shield_energy": 0},
         {"initial_shield_active": True, "initial_engine_output": 14},
         {"initial_lane": "center"},

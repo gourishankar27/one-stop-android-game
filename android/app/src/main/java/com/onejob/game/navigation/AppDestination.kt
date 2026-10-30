@@ -7,6 +7,7 @@ enum class AppDestination(val route: String) {
     JOIN("join"),
     LOBBY("lobby"),
     ROLE("role"),
+    COUNTDOWN("countdown"),
     GAMEPLAY("gameplay"),
     RESULTS("results"),
 }

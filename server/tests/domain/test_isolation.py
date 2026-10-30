@@ -21,7 +21,8 @@ def test_domain_import_is_independent_of_transport_and_environment_configuration
         )
         engine = GameEngine(config, 123, players, roles, round_id=RoundId(UUID(int=10)))
         engine.start()
-        assert engine.tick(900).state.round.result.outcome == "victory"
+        assert engine.tick(900).state.round.result is not None
+        assert engine.snapshot().round.result.failed_count > 0
         forbidden = {"fastapi", "pydantic", "asyncio", "socket", "httpx", "uvicorn"}
         loaded = {name.split(".")[0] for name in sys.modules}
         assert not loaded & forbidden, sorted(loaded & forbidden)

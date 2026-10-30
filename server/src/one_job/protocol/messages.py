@@ -14,6 +14,7 @@ from pydantic import (
     StrictStr,
     StringConstraints,
     field_validator,
+    model_validator,
 )
 
 RequestId = Annotated[str, StringConstraints(strict=True, pattern=r"\A[A-Za-z0-9_-]{1,64}\z")]
@@ -21,7 +22,9 @@ NonnegativeInt = Annotated[StrictInt, Field(ge=0)]
 Percent = Annotated[StrictInt, Field(ge=0, le=100)]
 Stage = Literal["briefing", "countdown", "running", "paused", "finished", "aborted"]
 LobbyStage = Literal["lobby", "briefing", "countdown", "running", "paused", "finished", "aborted"]
-AckOperation = Literal["leave_room", "player_ready", "start_game", "briefing_ready"]
+AckOperation = Literal[
+    "leave_room", "player_ready", "start_game", "briefing_ready", "play_again", "return_to_lobby"
+]
 ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
@@ -86,6 +89,7 @@ class ErrorCode(StrEnum):
     INVALID_STAGE = "invalid_stage"
     INVALID_ACTION = "invalid_action"
     STALE_ROUND = "stale_round"
+    STALE_ACTION = "stale_action"
     NOT_ROLE_OWNER = "not_role_owner"
     INSUFFICIENT_POWER = "insufficient_power"
     COOLDOWN = "cooldown"
@@ -110,6 +114,7 @@ ERROR_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.INVALID_STAGE: "The action is unavailable at this stage.",
     ErrorCode.INVALID_ACTION: "The action is invalid.",
     ErrorCode.STALE_ROUND: "The action belongs to a different round.",
+    ErrorCode.STALE_ACTION: "The action sequence has already been used.",
     ErrorCode.NOT_ROLE_OWNER: "The station is not owned by this player.",
     ErrorCode.INSUFFICIENT_POWER: "There is insufficient available power.",
     ErrorCode.COOLDOWN: "The action is cooling down.",
@@ -161,6 +166,12 @@ class SessionAcceptedPayload(DTO):
 
 class AckPayload(DTO):
     operation: AckOperation
+
+
+class ActionAckPayload(DTO):
+    operation: Literal["player_action"] = "player_action"
+    client_action_seq: Annotated[StrictInt, Field(ge=1)]
+    applied_tick: NonnegativeInt
 
 
 class LobbyPlayer(DTO):
@@ -216,6 +227,27 @@ class ResultView(DTO):
     resolved_count: NonnegativeInt
     failed_count: NonnegativeInt
     players: tuple[PlayerSummary, ...]
+
+    @model_validator(mode="after")
+    def consistent_result(self) -> "ResultView":
+        from uuid import UUID
+
+        if self.survived_ms > 120_000 or self.survived_ms % 100:
+            raise ValueError("result time must contain valid whole gameplay ticks")
+        ids = tuple(UUID(player.player_id) for player in self.players)
+        if len(ids) not in (2, 3) or len(set(ids)) != len(ids):
+            raise ValueError("result needs a distinct frozen participant roster")
+        if any(normalize_name(player.name) != player.name for player in self.players):
+            raise ValueError("result names must already be normalized")
+        if self.outcome == "victory":
+            if self.reason != "survived" or self.survived_ms < 60_000:
+                raise ValueError("victory requires the full supported duration")
+        elif self.outcome == "defeat":
+            if self.reason != "hull_destroyed" or self.final_hull_percent != 0:
+                raise ValueError("defeat requires destroyed hull")
+        elif self.reason in ("survived", "hull_destroyed"):
+            raise ValueError("an abort needs an abort reason")
+        return self
 
 
 class PublicWarning(DTO):

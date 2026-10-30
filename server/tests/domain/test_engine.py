@@ -23,7 +23,7 @@ from one_job.domain.types import Lane, MoveDirection, Outcome, RoundId, RoundSta
 
 def make_engine(state: GameState, config: GameConfig | None = None) -> GameEngine:
     return GameEngine(
-        config or state.config,
+        replace(config or state.config, emergencies_enabled=False),
         12345,
         state.players,
         state.assignments,
@@ -295,15 +295,13 @@ def test_existing_power_reservation_validation(game_state: GameState) -> None:
         ShieldBoost(),
     ],
 )
-def test_future_actions_are_unavailable(engine: GameEngine, action: PlayerAction) -> None:
+def test_full_catalog_is_available_to_its_owner(engine: GameEngine, action: PlayerAction) -> None:
     state = engine.start()
+    engineer = state.assignments.owners[Role.ENGINEER]
+    assert engine.apply_action(engineer, SetEnginePower(100)).accepted
     result = engine.apply_action(state.assignments.owners[action.role], action)
-    assert (
-        result.code == ActionCode.FEATURE_UNAVAILABLE
-        and not result.accepted
-        and result.events == ()
-    )
-    assert engine.snapshot() is state and engine.accepted_actions == ()
+    assert result.accepted and len(result.events) == 1
+    assert result.events[0].action == action
 
 
 def test_order_and_immutable_action_trace(engine: GameEngine) -> None:

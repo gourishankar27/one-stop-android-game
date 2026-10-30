@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
-enum class LobbyOperation { READY, START, LEAVE, RETRY }
+enum class LobbyOperation { READY, START, LEAVE, RETRY, PLAY_AGAIN, RETURN_TO_LOBBY }
 enum class StartBlock { CONNECTION, SNAPSHOT, HOST_ONLY, TWO_PLAYERS, CONNECTED, READY, SERVER }
 data class LobbyMemberUi(val id: String, val name: String, val connected: Boolean, val ready: Boolean, val host: Boolean, val local: Boolean)
 data class LobbyUiState(
@@ -27,6 +27,8 @@ data class LobbyUiState(
     val pending: LobbyOperation? = null,
     val confirmLeave: Boolean = false,
     val feedback: LobbyFeedback? = null,
+    val canPlayAgain: Boolean = false,
+    val canReturnToLobby: Boolean = false,
 )
 
 /** Presentation only. The repository/server own membership, readiness and permission. */
@@ -54,6 +56,12 @@ class LobbyViewModel(private val repository: GameRepository) : ViewModel() {
     fun start() {
         if (!_ui.value.canStart) return
         command(LobbyOperation.START) { repository.start() }
+    }
+    fun playAgain() {
+        if (_ui.value.canPlayAgain) command(LobbyOperation.PLAY_AGAIN) { repository.playAgain() }
+    }
+    fun returnToLobby() {
+        if (_ui.value.canReturnToLobby) command(LobbyOperation.RETURN_TO_LOBBY) { repository.returnToLobby() }
     }
     fun retry() {
         if (pending != null) return
@@ -121,16 +129,18 @@ class LobbyViewModel(private val repository: GameRepository) : ViewModel() {
             members.size < 2 -> StartBlock.TWO_PLAYERS
             members.any { !it.connected } -> StartBlock.CONNECTED
             members.any { !it.ready } -> StartBlock.READY
-            !lobby.can_start || lobby.stage != "lobby" -> StartBlock.SERVER
+            !lobby.can_start || lobby.stage !in setOf("lobby", "finished", "aborted") -> StartBlock.SERVER
             else -> null
         }
         val notice = if (connection.status == ConnectionStatus.SESSION_EXPIRED) LobbyFeedback.EXPIRED else feedback
         return LobbyUiState(
             connection, admitted || pending == LobbyOperation.LEAVE, identity?.roomCode,
             members, local?.ready == true,
-            connected && lobby?.stage == "lobby" && local?.connected == true && pending == null && !leaving,
+            connected && lobby?.stage in setOf("lobby", "finished", "aborted") && local?.connected == true && pending == null && !leaving,
             connected && host && lobby?.can_start == true && lobby.stage == "lobby" && pending == null && !leaving,
             block, pending, confirmLeave, notice,
+            connected && host && lobby?.stage in setOf("finished", "aborted") && lobby?.can_start == true && pending == null && !leaving,
+            connected && host && lobby?.stage in setOf("finished", "aborted") && pending == null && !leaving,
         )
     }
 }

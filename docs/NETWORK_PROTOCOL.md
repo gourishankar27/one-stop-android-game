@@ -1,6 +1,6 @@
 # WebSocket protocol v1
 
-## Implemented Phase 08 subset
+## Implemented Phase 11 subset
 
 The server exposes independent `GET /health` and `/ws`. WebSockets use JSON text
 frames only, one message per frame, maximum UTF-8 size 16 KiB (16,384 bytes).
@@ -9,8 +9,9 @@ the implemented subset with sealed serializable types. No arbitrary dictionaries
 define gameplay payloads.
 
 Implemented commands: `ping`, `create_room`, `join_room`, `resume_session`,
-`leave_room`, `player_ready`, `request_state`, `start_game`, `briefing_ready` and
-the typed ownership boundary for `player_action`. Their payload DTOs reject
+`leave_room`, `player_ready`, `request_state`, `start_game`, `briefing_ready`,
+`play_again`, `return_to_lobby` and
+all nine authoritative `player_action` controls. Their payload DTOs reject
 unknown fields/coercion. Names are trimmed
 1–20 Unicode scalar characters without control characters; duplicate names are
 allowed. Codes trim outer whitespace and uppercase six ASCII symbols from
@@ -25,7 +26,8 @@ ready players, in that order. An eligible request returns `ack`, freezes the
 roster/config/seed under a new round UUID and changes stage to `briefing`.
 Each player receives only their `role_assigned` and `role_state`, alongside the
 shared lobby snapshot. Host status never widens private access. `can_start`
-reports lobby eligibility. `player_ready` returns `ack` before any changed lobby snapshot;
+reports eligibility in lobby and terminal stages. `player_ready` is accepted in
+lobby/finished/aborted and returns `ack` before any changed lobby snapshot;
 an unchanged ready value returns only the ack. In lobby, `request_state` returns
 a correlated `lobby_state`. During a round it sends unsolicited lobby and owned
 assignment snapshots followed by the correlated full `role_state` as its terminal
@@ -40,17 +42,64 @@ The initial deadline is 60 seconds; disconnect suspends its remaining budget
 during the existing 30-second grace. Only reconnection of all frozen participants
 resumes it. Explicit leave, grace expiry or briefing expiry abort with
 `player_left`, `disconnect_timeout` or `briefing_timeout` in the public result.
-All acknowledged participants remain in briefing with `held_for_gameplay=true`;
-no countdown, engine start, simulation tick or control panel is enabled.
+All acknowledged participants enter a server-owned 3000ms countdown. The same
+100ms runner advances countdown without changing gameplay time, resources,
+cooldowns, emergencies or RNG. Countdown publishes at 5Hz and transitions
+immediately to running at tick zero. `held_for_gameplay` is false. Countdown
+and running disconnects pause until every frozen participant returns; paused
+wall time creates no catch-up backlog. Countdown resumes from its last completed
+100ms step. The separate gameplay timer remains the configured 60–120 seconds
+(90 seconds by default), with the existing seeded difficulty thirds.
 
 All nine `player_action` shapes are validated. A mismatched round returns
-`stale_round`; authenticated ownership is checked before the held-stage gate,
-returning `not_role_owner` for another station and `invalid_stage` for one's own.
-These are ordinary correlated `error` replies in Phase 08. No action is applied.
-The running action acknowledgements/sequencing and `action_rejected` catalog below
-belong to later gameplay. `play_again`, `return_to_lobby` and `join_display` remain
-reserved with `feature_unavailable` before business payload decoding. No observer
-membership or `public_state` broadcast is exposed.
+`stale_round`; authenticated ownership is checked before the running-stage gate,
+returning `not_role_owner` for another station and `invalid_stage` outside running.
+Accepted commands receive correlated `ack` with `operation=player_action`,
+`client_action_seq` and authoritative `applied_tick`. Rejections receive correlated
+`action_rejected` with safe code/message, sequence and supplied round UUID.
+Malformed messages still use ordinary `error`. Authenticated typed current-round
+attempts consume their sequence even on rejection; sequences must strictly
+increase. Stale-round attempts do not consume current-round sequence. Cached
+request replay precedes sequence validation, returning the original terminal reply
+without applying again. A new ID with an old sequence returns `stale_action`.
+There is no sequence reset on resume; a new round resets it. Only `join_display`
+remains reserved with `feature_unavailable` before business payload decoding. No observer
+membership or `public_state` broadcast is exposed. Phase 10 schedules asteroid,
+overheating and shield-overload events inside the pure engine.
+
+`emergency_event` is now implemented as a critical, noncoalesced shared lifecycle
+message. It has null `reply_to`, a room revision and exactly round ID, emergency
+ID, kind and started/resolved/failed status. Each transition is emitted once;
+request_state/resume restore current snapshots rather than replaying event history.
+No target, seed, future slot or failure predicate enters the shared event. Public
+warning labels contain no deadlines or directions. Only the recipient's owned
+station views contain the relevant typed instructions and server-computed
+remaining milliseconds. Paused deadlines stay fixed; finished warnings disappear.
+The Android repository retains only the latest shared lifecycle label per round,
+clears it on recovery/round replacement and never derives resources/outcomes from it.
+
+The room owner dispatches queued commands before that turn's fixed 100ms steps.
+Owned snapshots target 5Hz; accepted replies need not wait for a snapshot. Each
+tick/action advances room revision; skipped snapshot revisions are normal. Lobby
+snapshots accompany lifecycle/membership changes, not every tick. At most five
+catch-up steps run per turn; if more than five remain due on the next consecutive
+turn, abort with `server_overload`. Terminal owned state includes the public
+result immediately, bypasses snapshot coalescing, and stops the runner. Exactly
+one critical `game_over` with null `reply_to`, room revision and
+`{round_id,result}` is emitted to each currently connected member on terminal
+transition. Snapshot/resume restores that same result without replaying the event.
+Android navigates to Results from the matching full snapshot, never from the event.
+
+`play_again` and `return_to_lobby` accept typed empty payloads and require the
+current host in finished/aborted. Play again also requires exactly 2 or 3 connected,
+explicitly ready members. It acknowledges before broadcasting a new briefing,
+round UUID, seed and shuffled assignments; all per-round state/readiness resets.
+The new UUID and seed must differ from the preceding round, even after returning
+to lobby (bounded eight factory attempts). Return to lobby clears the round and
+all readiness while preserving membership and room code. Old-round action and
+briefing commands are rejected. No-op/cached command replies do not repeat these
+operations. Client caches, pending inputs and sequence allocation reset on a
+fresh round or lobby transition; no gameplay commands are replayed.
 
 Validation order: UTF-8 byte size, JSON, strict required envelope, integer version,
 recognized type, then implemented payload. Unknown fields/types, missing fields,
@@ -92,6 +141,9 @@ changed in Phase 06.
 [Phase 08 fixtures](protocol-fixtures/phase08.json) add synthetic owned assignments,
 two-/three-player private states and acknowledgement replies. Both implementations
 check these fixtures; no live token or captured private frame is committed.
+[Phase 11 fixtures](protocol-fixtures/phase11.json) add two-/three-player countdown,
+paused countdown, stable victory/defeat/abort, critical result events, rematch and
+return-to-lobby messages. Python and Android validate the same synthetic fixtures.
 
 Android accepts additive incoming fields while requiring the typed known fields
 and strict primitive types. Malformed/oversize/duplicate-key frames and unsupported
@@ -107,6 +159,13 @@ ownership/acknowledgement are protocol failures; private caches are cleared.
 Recovery completes only after the fresh correlated private snapshot. Equal
 revisions across distinct message kinds are valid. Later event kinds need DTOs
 and fixture updates in their selected phases.
+[Phase 09 fixtures](protocol-fixtures/phase09.json) add running private views,
+action acknowledgement and rejection, checked by both codecs. The Kotlin
+repository allocates action sequences for normal UI intents, retains them through
+resume/ViewModel replacement, and correlates rejection by request/sequence/round.
+It never uses an acknowledgement to invent a new ship snapshot. Slider intents
+have one in-flight send and one conflated latest value, at most 10 sends/second;
+recovery/stage/round changes and shutdown discard stale queued output.
 
 Android uses one socket per repository, 16 KiB accepted text frames, 64 incoming
 events and 64 actor events, a 64 KiB outgoing socket queue and 32 pending requests.
@@ -143,6 +202,9 @@ targeted admission replies. Membership/indexes store only token digests. See
 [ADR-014](DECISIONS.md#adr-014--lobby-ownership-credential-replay-and-expiry-boundaries).
 Round-state replies are cached only in the recipient membership's bounded replay
 cache; private fields are excluded from DTO/replay representations and logs.
+Replacing or clearing a round invalidates cached private `request_state` replies,
+so even reuse of their request IDs cannot restore an old private round. Command
+replay entries retain the existing bounded semantics.
 
 ## Envelope
 
@@ -255,12 +317,14 @@ commands are supplied by the application, not copied from untrusted fields.
 | `pong` | `nonce`; requester |
 
 In `lobby_state`, `stage` is lobby/briefing/countdown/running/paused/finished/aborted;
-`can_start` is common start eligibility, not a substitute for checking host ID.
+`can_start` is common Start eligibility in lobby or Play-again eligibility in
+finished/aborted, never a substitute for checking host ID and operation stage.
 `host_player_id` is UUID|null, temporarily null if no connected successor exists.
 Shared membership is sent even during a round to show connection state.
 
 `PublicRoundView` fields: `round_id`, `stage`, `tick_index`, `remaining_ms`,
-`countdown_remaining_ms` (null outside countdown), `paused_from` (stage|null),
+`countdown_remaining_ms` (also retained when paused from countdown, otherwise null),
+`paused_from` (stage|null),
 `hull_percent`, `shield_percent`, `warnings: [{emergency_id,kind,label}]`,
 `result` (the game_over result or null). Percentages are integer 0..100.
 Warning labels have no hidden target/direction/countdown. Shared stage/timing is
@@ -269,10 +333,16 @@ inside each private role snapshot so a client can reconcile it atomically.
 `BriefingStatus` contains `acknowledged: boolean` for the recipient,
 `waiting_player_ids: [UUID]` from the frozen roster, `remaining_ms: integer>=0`,
 `complete: boolean` and `held_for_gameplay: boolean`. Completion means no waiting
-participants. Held means complete and nonterminal in this phase. The briefing
+participants. The server emits held=false and transitions through countdown;
+the earlier held briefing remains readable in historical Phase 08 fixtures. The briefing
 budget is distinct from the unchanged round `public.remaining_ms`; the UI does
-not run either clock locally. Aborts are conveyed in `public.result`, not a new
-results route or `game_over` orchestration.
+not run either clock locally. Aborts, including briefing timeout at zero survival
+time, use `public.result` and the same Results route/event as gameplay outcomes.
+Results contain a frozen 2/3-player roster, whole 100ms survival steps up to
+120 seconds, percentages 0..100 and nonnegative counters. Victory requires
+`survived` and at least 60 seconds; defeat requires `hull_destroyed` and 0% hull;
+abort requires an abort reason. A victory may display 0% hull because a positive
+internal hull below 1% rounds down; that lossy percentage cannot determine defeat.
 
 Station views, keyed only by owned roles:
 
@@ -291,8 +361,17 @@ the arrays are empty. `deadline_remaining_ms` is server-computed. A later change
 must update these schemas and fixtures, rather than silently adding raw state.
 Pilot cooldown keys are `move_lane, evade`; Engineer keys are
 `engine_boost, coolant`; Shields keys are `recharge_shield, shield_boost`.
-Phase 08 emits empty emergency arrays
-and `maneuver_ready=false` because controls are held.
+Phase 10 populates these existing emergency arrays. Asteroid lane goes only to
+Pilot and required shield facing only to Shields. Overheat output/temperature go
+only to Engineer. Overload gives Engineer the output limit and Shields the
+deactivate instruction. Progress stays internal; keep the condition until the
+server removes the warning. [Phase 10 fixtures](protocol-fixtures/phase10.json)
+cover both concurrency pairs, every recipient in 2/3-player mode and each event
+kind/status. All fixture identities/targets are synthetic. `maneuver_ready` is computed by the
+server from running stage, output requirement, cooldown and active duration.
+Zero-energy shield activation returns `invalid_action`; missing output/spare
+power returns `insufficient_power`; already active effects or cooldowns return
+`cooldown`. Rejections never partially change facing/resources/cooldowns.
 
 ## Correlation, ordering and recovery
 

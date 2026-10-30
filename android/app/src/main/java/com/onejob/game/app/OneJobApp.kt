@@ -15,7 +15,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.onejob.game.data.GameRepository
 import com.onejob.game.navigation.AppDestination
 import com.onejob.game.ui.ShellHome
-import com.onejob.game.ui.PlaceholderScreen
 import com.onejob.game.ui.forms.FormKind
 import com.onejob.game.ui.forms.RoomFormScreen
 import com.onejob.game.ui.forms.RoomFormViewModel
@@ -24,6 +23,12 @@ import com.onejob.game.ui.lobby.LobbyScreen
 import com.onejob.game.ui.lobby.LobbyFeedbackText
 import com.onejob.game.ui.roles.RoleViewModel
 import com.onejob.game.ui.roles.RoleScreen
+import com.onejob.game.ui.gameplay.GameplayViewModel
+import com.onejob.game.ui.gameplay.GameplayScreen
+import com.onejob.game.ui.lifecycle.CountdownScreen
+import com.onejob.game.ui.lifecycle.ResultsScreen
+import com.onejob.game.navigation.sessionDestination as destinationForSession
+import com.onejob.game.navigation.sessionDestinations
 import com.onejob.game.data.ConnectionStatus
 import com.onejob.game.ui.lobby.LobbyOperation
 
@@ -36,12 +41,13 @@ fun OneJobApp(repository: GameRepository) {
     val lobby by lobbyModel.uiState.collectAsStateWithLifecycle()
     val roleModel: RoleViewModel = viewModel(factory = viewModelFactory { initializer { RoleViewModel(repository) } })
     val role by roleModel.uiState.collectAsStateWithLifecycle()
+    val gameModel: GameplayViewModel = viewModel(factory = viewModelFactory { initializer { GameplayViewModel(repository) } })
+    val game by gameModel.uiState.collectAsStateWithLifecycle()
     val session by repository.session.collectAsStateWithLifecycle()
     val entry by navController.currentBackStackEntryAsState()
     val route = entry?.destination?.route
-    val roleRequired = session.lobby?.stage in setOf("briefing", "paused", "aborted") || session.roleState != null ||
-        (route == AppDestination.ROLE.route && (lobby.connection.status != ConnectionStatus.CONNECTED || lobby.pending == LobbyOperation.LEAVE))
-    val sessionDestination = if (roleRequired) AppDestination.ROLE else AppDestination.LOBBY
+    val sessionDestination = destinationForSession(session, AppDestination.entries.firstOrNull { it.route == route },
+        lobby.connection.status != ConnectionStatus.CONNECTED || lobby.pending == LobbyOperation.LEAVE)
     val openLobby = {
         navController.navigate(sessionDestination.route) {
             popUpTo(AppDestination.HOME.route)
@@ -51,7 +57,7 @@ fun OneJobApp(repository: GameRepository) {
     LaunchedEffect(lobby.keepLobby, route, sessionDestination) {
         if (lobby.keepLobby && route !in listOf(AppDestination.CREATE.route, AppDestination.JOIN.route, sessionDestination.route)) {
             openLobby()
-        } else if (!lobby.keepLobby && route in listOf(AppDestination.LOBBY.route, AppDestination.ROLE.route)) {
+        } else if (!lobby.keepLobby && route in sessionDestinations.map { it.route }) {
             navController.navigate(AppDestination.HOME.route) {
                 popUpTo(AppDestination.HOME.route) { inclusive = true }
                 launchSingleTop = true
@@ -96,12 +102,18 @@ fun OneJobApp(repository: GameRepository) {
             RoleScreen(role, lobby.confirmLeave, roleModel::select, roleModel::confirmRead,
                 roleModel::acknowledge, lobbyModel::askLeave, lobbyModel::dismissLeave, lobbyModel::confirmLeave)
         }
-        for (destination in listOf(
-            AppDestination.GAMEPLAY, AppDestination.RESULTS,
-        )) {
-            composable(destination.route) {
-                PlaceholderScreen(destination) { navController.popBackStack() }
-            }
+        composable(AppDestination.GAMEPLAY.route) {
+            GameplayScreen(game, lobby.confirmLeave, gameModel::select, gameModel::setOutput,
+                gameModel::act, lobbyModel::askLeave, lobbyModel::dismissLeave, lobbyModel::confirmLeave)
+        }
+        composable(AppDestination.COUNTDOWN.route) {
+            CountdownScreen(game.snapshot, game.instructions, lobby, lobbyModel::askLeave,
+                lobbyModel::dismissLeave, lobbyModel::confirmLeave)
+        }
+        composable(AppDestination.RESULTS.route) {
+            ResultsScreen(game.snapshot, lobby, lobbyModel::toggleReady, lobbyModel::playAgain,
+                lobbyModel::returnToLobby, lobbyModel::retry, lobbyModel::askLeave,
+                lobbyModel::dismissLeave, lobbyModel::confirmLeave)
         }
     }
 }

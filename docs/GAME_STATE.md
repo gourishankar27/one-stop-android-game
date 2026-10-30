@@ -3,7 +3,8 @@
 Phase 01 implements immutable, validated Python domain values in
 `server/src/one_job/domain/`. Phase 02 adds the synchronous baseline engine
 described below. Phase 04 implements application room membership/lobby projections;
-Phase 08 adds seeded ownership and allowlisted private briefing projections. Wire field
+Phase 08 adds seeded ownership and private projections; Phase 09 connects full
+controls, the room runner and owned control panels. Wire field
 names live in
 NETWORK_PROTOCOL.md; internal snapshots are not serialization contracts.
 
@@ -181,7 +182,7 @@ the package root; result/event types and `ENGINE_VERSION` live in `domain/engine
 | --- | --- |
 | `snapshot() → GameState` | Immutable internal snapshot; safe to retain while the engine replaces its current state |
 | `start() → GameState` | Briefing to running at tick zero; repeated starts raise `ValueError` |
-| `apply_action(actor_id, action) → ActionResult` | Applies `SetEnginePower`, `MoveLane` or `Coolant` immediately, in caller order |
+| `apply_action(actor_id, action) → ActionResult` | Applies all nine station actions immediately, in caller order |
 | `tick(steps=1) → TickResult` | Positive integer count of 100 ms steps; stops at the first terminal tick |
 | `accepted_actions` | Immutable tuple of `ActionApplied(tick_index, order, actor_id, action)` records |
 
@@ -191,10 +192,10 @@ and leave snapshots, accepted-order history and RNG unchanged. Rejection codes a
 `invalid_stage`, `not_participant`, `invalid_action`, `feature_unavailable`,
 `not_role_owner`, `insufficient_power`, `cooldown` and `lane_boundary`.
 The engine checks stage, then participant, known/supported shape, typed arguments,
-ownership and action constraints. The six reserved Phase 09 actions return
-`feature_unavailable` for any valid participant while running. Unknown/malformed
-actions return `invalid_action`. These domain codes are internal; a future
-transport adapter must map them to the versioned wire contract explicitly.
+ownership and action constraints. Phase 09 executes the entire action union;
+`feature_unavailable` remains a compatibility code but no catalog action emits it.
+Unknown/malformed actions return `invalid_action`. Transport maps domain codes
+explicitly, including `lane_boundary` to the safe wire `invalid_action`.
 
 The snapshot's `tick_index=n` counts completed steps. Commands at boundary `n`
 are applied in call order before effects for step `n+1`. Their trace uses boundary
@@ -202,30 +203,35 @@ are applied in call order before effects for step `n+1`. Their trace uses bounda
 order. The caller drains its ordered commands before calling `tick()`. There is
 no queue, socket, ticker or wall-clock scheduler inside the engine.
 
-Each step applies base heat/cooling and clamps temperature, then critical heat
-damage and hull clamping, then ages movement/coolant cooldowns, advances the tick,
-and checks terminal conditions. A cooldown set to C at boundary n becomes legal
+Each step applies base/boost heat and clamps temperature, then critical heat
+damage/hull clamping, combined shield energy gains/drain and zero-energy release,
+then evaluates existing emergencies, ages all durations/cooldowns, advances the tick and checks terminal
+conditions. A cooldown set to C at boundary n becomes legal
 again at boundary n+C. Thus a move at zero is unavailable after one step and
 available after two; coolant becomes available after 30 default steps.
 
 `TickResult.state` is the new snapshot and `TickResult.events` contains one
-`RoundEnded(result)` only on the transition to terminal. Hull destruction wins
+`RoundEnded(result)` only on the transition to terminal, plus ordered
+`EmergencyChanged` lifecycle events. Hull destruction wins
 over time expiration on the same step. Subsequent valid ticks return the same
 terminal snapshot with no events, and actions return `invalid_stage`. Invalid
 step counts (zero, negative, bool, float/nonfinite or string) and ticking before
 start raise `ValueError` without mutation. There is no delta-time API.
 
-Only temperature/hull evolve continuously in Phase 02. Shield resources and flags
-retain their configured initial values; an existing configured power reservation
-still constrains output changes. Evade, boosts, shield controls/passive dynamics,
-shutdown and emergencies are not simulated. The baseline tick rules do not draw
-randomness. Phase 08 role assignment draws before engine construction; changing
-only the seed still has no effect on these heat/hull rules.
+The original Phase 02 heat/hull behavior remains. Phase 09 adds evade, boosts,
+shutdown, facing/activation and recharge/energy dynamics under the documented
+power reservations. Phase 10 adds the pure seeded `EmergencyScheduler` and
+`advance_emergencies` state machines. Existing events resolve/fail by ID before
+terminal checks; if still running, threshold overheat and the due scheduled slot
+may start events. Engine-local counters enter `GameResult` on finish/abort.
+The scheduler owns its next slot/ID, not a wall clock. Its state/seed never enters
+transport projections. Pause freezes it and terminal calls cannot draw RNG.
+Explicit `GameConfig(emergencies_enabled=False)` preserves core-only replay
+fixtures. Production defaults enable emergencies (`spaceship-v2`, engine v3).
 
 Snapshots, action traces and engine events are internal data, not public/player
 projections. Never serialize or broadcast these full objects. Phase 03 adapts
-this API; Phase 08 implements private briefing projections. Live running
-orchestration remains later work.
+this API; Phase 08 implements private projections and Phase 09 live running.
 
 ## Phase 08 role and briefing API
 
@@ -240,7 +246,9 @@ rules. Metadata has one to four short, nonblank instructions.
 `application.round_service.RoundService` is synchronously owned by the existing
 room mailbox. An eligible host start freezes config/roster, creates a round UUID
 and seed, performs assignment and gives the engine a private copy of the RNG's
-post-assignment state. No engine start or tick is called in Phase 08.
+post-assignment state. After the last acknowledgement Phase 11 calls
+`begin_countdown()` and arms the room runner; Phase 08's held state and Phase 09's
+direct `start()` remain usable by historical pure-engine fixtures.
 `GameEngine.authorize_action(actor_id, action)` checks all nine action shapes and
 station ownership without mutation. The authenticated socket supplies actor ID;
 client role/player claims are forbidden. `pause()`, `resume()` and
@@ -259,10 +267,53 @@ or phone-selected tab. It accepts `briefing_ready(round_id)` for all owned roles
 Android requires an explicit read confirmation on each owned station first.
 The acknowledgement budget starts at 60 seconds and freezes during disconnect
 grace. It resumes only when every original participant is connected. All ready
-means a held briefing with no deadline; time, countdown and simulation remain
-unchanged. Explicit leave, expired grace and expired briefing abort visibly with
+now means countdown with no briefing deadline. Explicit leave,
+expired grace and expired briefing abort visibly with
 `player_left`, `disconnect_timeout` and `briefing_timeout` respectively. The
-in-memory round is retained until members leave; rematch/return is Phase 11.
+in-memory terminal round is stable until replacement, lobby return or room removal.
+
+## Phase 11 countdown and session loop
+
+`GameEngine.begin_countdown()` transitions briefing to countdown with 3000ms.
+`advance_countdown(elapsed_ms)` requires a positive integer, consumes only
+countdown time, clamps at zero and discards overshoot on entry to running tick
+zero. Neither call changes resources, cooldowns, emergency state, action order or
+RNG. They do not read clocks. The room runner supplies 100ms steps and publishes
+countdown at 5Hz plus immediate stage transitions. Pause freezes the last completed
+step; resume uses a fresh origin and cannot accumulate paused time. The existing
+five-step overload guard applies in countdown too. `tick()` retains the unchanged
+running rules and hull-before-timer precedence; no engine/replay version changes.
+
+Terminal broadcast includes the stable allowlisted result and one critical
+`game_over`; recovery obtains a full snapshot without replaying the event.
+Explicit terminal readiness enables host `play_again` for 2/3 connected members.
+Replacement constructs a fresh context before mutating the old one, suspends its
+runner, resets readiness/sequence/action/cooldown/event state and uses a different
+seed and UUID. Factory collisions retry at most eight times and otherwise preserve
+the old terminal state. `return_to_lobby` clears the round/readiness. Only the
+previous round's ID/seed are retained for collision protection; no history grows.
+Cached private state replies are discarded when a round is cleared/replaced.
+
+## Phase 09 runner and action boundary
+
+`RoomRunner` is synchronous scheduling policy inside the existing room task. An
+injected monotonic clock wakes it at 100ms boundaries; it does not create another
+mutable owner. Commands dispatched that turn precede continuous effects and
+record `(completed tick, accepted order)`. At most five catch-up ticks run per
+turn; a second consecutive turn owing more than five aborts `server_overload`.
+Pause suspends scheduling; resume uses the current completed tick and a fresh
+wall-time origin, discarding paused time rather than catching it up.
+
+Snapshots target 5Hz and contain only the recipient's owned station details plus
+common public state. Tick/action mutations advance revision even between
+snapshots. Terminal state is immediate, critical and stops scheduling. Socket
+offers are bounded/nonblocking; slow writers never run inside simulation.
+`RoundService.submit_action` enforces current round and per-player monotonic
+sequence, then authenticated engine ownership/stage/rules. Typed current-round
+attempts consume sequence on rejection too; cached request replay occurs first.
+Stale-round requests do not consume current sequence. No action is automatically
+resent. Accepted trace events map to `ack` with sequence/applied tick; failures
+map to `action_rejected`. The server alone determines victory/defeat/abort.
 
 ## Authoritative ship model
 

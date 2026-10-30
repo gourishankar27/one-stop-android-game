@@ -88,6 +88,141 @@ class SocketGameRepositoryTest {
         error("Missing synthetic role fixture")
     }
 
+    @Test fun emergencyLifecycleDoesNotInventStateOrSuppressEqualRevisionSnapshot() = runTest {
+        val rig = Rig(this)
+        try {
+            rig.admit()
+            val (assigned, original) = privateFixture(StationRole.PILOT)
+            val state = original.copy(payload=original.payload.copy(
+                public=original.payload.public.copy(stage="running",tick_index=80),
+                briefing=BriefingStatus(true,emptyList(),0,true,false)))
+            rig.socket.reply(assigned); rig.socket.reply(state); runCurrent()
+            val event=ServerMessage.EmergencyEvent(1,null,8,
+                EmergencyEventPayload(assigned.payload.round_id,1,"asteroid","started"))
+            rig.socket.reply(event); runCurrent()
+            assertEquals(state.payload,rig.repo.session.value.roleState)
+            assertEquals(event.payload,rig.repo.session.value.emergencyEvent)
+            val updated=state.copy(room_revision=8,payload=state.payload.copy(
+                public=state.payload.public.copy(warnings=listOf(PublicWarning(1,"asteroid","Asteroid approach"))),
+                stations=state.payload.stations.copy(pilot=state.payload.stations.pilot!!.copy(
+                    hazards=listOf(PilotHazard(1,LaneValue.LEFT,8000))))))
+            rig.socket.reply(updated); rig.socket.reply(event); runCurrent()
+            assertEquals(updated.payload,rig.repo.session.value.roleState)
+            val resolved=event.copy(room_revision=9,payload=event.payload.copy(status="resolved"))
+            rig.socket.reply(resolved)
+            rig.socket.reply(event.copy(room_revision=9,payload=event.payload.copy(emergency_id=2)))
+            runCurrent()
+            assertEquals(resolved.payload,rig.repo.session.value.emergencyEvent)
+            rig.socket.reply(event.copy(payload=event.payload.copy(round_id="00000000-0000-0000-0000-000000000098")))
+            runCurrent()
+            assertEquals(ConnectionStatus.CONNECTED,rig.repo.connectionStatus.value)
+            assertEquals(updated.payload,rig.repo.session.value.roleState)
+        } finally { rig.repo.closeAndJoin() }
+    }
+
+    @Test fun actionSequenceIsAllocatedByRepositoryAndRejectedActionsAreCorrelated() = runTest {
+        val rig = Rig(this)
+        try {
+            rig.admit()
+            val (assigned, state) = privateFixture(StationRole.PILOT)
+            val roundId = assigned.payload.round_id
+            val running = state.copy(payload = state.payload.copy(
+                public = state.payload.public.copy(stage = "running"),
+                briefing = BriefingStatus(true, emptyList(), 0, true, false)))
+            rig.socket.reply(assigned); rig.socket.reply(running); runCurrent()
+            val first = async { rig.repo.performAction(roundId, PlayerAction.Evade) }; runCurrent()
+            val request = rig.socket.sent.last() as ClientMessage.Action
+            assertEquals(1L, request.payload.client_action_seq)
+            rig.socket.reply(ServerMessage.ActionRejected(1, request.request_id, 7,
+                ActionRejectedPayload("insufficient_power", "SECRET_SENTINEL", 1, roundId)))
+            runCurrent(); assertEquals(RemoteCode.INSUFFICIENT_POWER, (first.await() as CommandResult.Rejected).code)
+            val second = async { rig.repo.performAction(roundId, PlayerAction.Evade) }; runCurrent()
+            val next = rig.socket.sent.last() as ClientMessage.Action
+            assertEquals(2L, next.payload.client_action_seq)
+            rig.socket.reply(ServerMessage.Ack(1, next.request_id, 8, AckPayload("player_action", 2, 12)))
+            runCurrent()
+            val accepted = second.await() as CommandResult.Accepted
+            assertEquals(2L, accepted.sequence); assertEquals(12L, accepted.appliedTick)
+            assertEquals(state.payload.stations, rig.repo.session.value.roleState!!.stations)
+            assertFalse(first.toString().contains("SECRET_SENTINEL"))
+        } finally { rig.repo.closeAndJoin() }
+    }
+
+    @Test fun mismatchedActionRejectionCannotCompleteAnotherAction() = runTest {
+        val rig = Rig(this)
+        try {
+            rig.admit()
+            val (assigned, state) = privateFixture(StationRole.PILOT)
+            rig.socket.reply(assigned); rig.socket.reply(state); runCurrent()
+            val roundId = assigned.payload.round_id
+            val command = async { rig.repo.performAction(roundId, PlayerAction.Evade) }; runCurrent()
+            val request = rig.socket.sent.last() as ClientMessage.Action
+            rig.socket.reply(ServerMessage.ActionRejected(1, request.request_id, 8,
+                ActionRejectedPayload("cooldown", "safe", 99, roundId)))
+            runCurrent(); assertEquals(ConnectionStatus.PROTOCOL_ERROR, rig.repo.connectionStatus.value)
+            assertTrue(command.await() is CommandResult.Uncertain)
+            assertNull(rig.repo.session.value.roleState)
+        } finally { rig.repo.closeAndJoin() }
+    }
+
+    @Test fun terminalEventRequiresSnapshotAndReturnToLobbyRetiresPrivateRound()=runTest {
+        val rig=Rig(this)
+        try {
+            rig.admit()
+            val (assigned,old)=privateFixture(StationRole.PILOT)
+            val running=old.copy(payload=old.payload.copy(public=old.payload.public.copy(stage="running"),
+                briefing=BriefingStatus(true,emptyList(),0,true,false)))
+            rig.socket.reply(assigned);rig.socket.reply(running);runCurrent()
+            val result=RoundResult("victory","survived",60000,0,2,1,listOf(ResultPlayer(PLAYER,"Crew"),
+                ResultPlayer("00000000-0000-0000-0000-000000000002","Crew")))
+            rig.socket.reply(ServerMessage.GameOver(1,null,8,GameOverPayload(assigned.payload.round_id,result)));runCurrent()
+            assertNull(rig.repo.session.value.roleState!!.public.result)
+            val terminal=running.copy(room_revision=8,payload=running.payload.copy(public=running.payload.public.copy(
+                stage="finished",tick_index=600,remaining_ms=0,result=result)))
+            rig.socket.reply(terminal);runCurrent()
+            assertEquals(result,rig.repo.session.value.roleState!!.public.result)
+            val command=async { rig.repo.returnToLobby() };runCurrent()
+            val request=rig.socket.sent.last() as ClientMessage.ReturnToLobby
+            rig.socket.reply(ServerMessage.Ack(1,request.request_id,9,AckPayload("return_to_lobby")))
+            rig.socket.reply(rig.lobby(9));runCurrent()
+            assertTrue(command.await() is CommandResult.Accepted)
+            assertNull(rig.repo.session.value.roleState);assertNull(rig.repo.session.value.assigned)
+            assertNull(rig.repo.session.value.publicRound);assertNull(rig.repo.session.value.emergencyEvent)
+            rig.socket.reply(assigned.copy(room_revision=9));rig.socket.reply(terminal.copy(room_revision=9));runCurrent()
+            assertNull(rig.repo.session.value.roleState);assertNull(rig.repo.session.value.assigned)
+        } finally { rig.repo.closeAndJoin() }
+    }
+
+    @Test fun rematchClearsOldResultBeforeAssignmentAndStartsFreshActionSequence()=runTest {
+        val rig=Rig(this)
+        try {
+            rig.admit()
+            val (assigned,old)=privateFixture(StationRole.PILOT)
+            val running=old.copy(payload=old.payload.copy(public=old.payload.public.copy(stage="running"),
+                briefing=BriefingStatus(true,emptyList(),0,true,false)))
+            rig.socket.reply(assigned);rig.socket.reply(running);runCurrent()
+            val action=async { rig.repo.performAction(assigned.payload.round_id,PlayerAction.Evade) };runCurrent()
+            val first=rig.socket.sent.last() as ClientMessage.Action
+            rig.socket.reply(ServerMessage.Ack(1,first.request_id,8,AckPayload("player_action",1,0)));runCurrent();action.await()
+            rig.socket.reply(rig.lobby(8).copy(payload=rig.lobby().payload.copy(stage="finished")));runCurrent()
+            val again=async { rig.repo.playAgain() };runCurrent()
+            val request=rig.socket.sent.last() as ClientMessage.PlayAgain
+            rig.socket.reply(ServerMessage.Ack(1,request.request_id,9,AckPayload("play_again")))
+            rig.socket.reply(rig.lobby(9).copy(payload=rig.lobby().payload.copy(stage="briefing")));runCurrent()
+            assertTrue(again.await() is CommandResult.Accepted)
+            assertNull(rig.repo.session.value.roleState);assertNull(rig.repo.session.value.assigned)
+            val newId="00000000-0000-0000-0000-000000000100"
+            rig.socket.reply(assigned.copy(room_revision=9,payload=assigned.payload.copy(round_id=newId)))
+            rig.socket.reply(running.copy(room_revision=9,payload=running.payload.copy(public=running.payload.public.copy(round_id=newId))))
+            runCurrent()
+            val nextAction=async { rig.repo.performAction(newId,PlayerAction.Evade) };runCurrent()
+            val second=rig.socket.sent.last() as ClientMessage.Action
+            assertEquals(1L,second.payload.client_action_seq)
+            rig.socket.reply(ServerMessage.Ack(1,second.request_id,10,AckPayload("player_action",1,0)));runCurrent()
+            assertTrue(nextAction.await() is CommandResult.Accepted)
+        } finally { rig.repo.closeAndJoin() }
+    }
+
     @Test fun privateSnapshotMismatchIsFatalAndNeverPublishedToSession() = runTest {
         val rig = Rig(this)
         try {

@@ -1,6 +1,6 @@
 """Application composition root; each lifespan owns its connection manager."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from anyio import CancelScope
@@ -11,6 +11,7 @@ from one_job.api.websocket import router as websocket_router
 from one_job.application.connections import ConnectionManager, ConnectionSettings
 from one_job.application.rooms import RoomRegistry, RoomSettings
 from one_job.application.timing import Clock, SystemClock
+from one_job.domain.config import GameConfig
 
 
 def create_app(
@@ -18,11 +19,15 @@ def create_app(
     clock: Clock | None = None,
     connections: ConnectionSettings | None = None,
     rooms: RoomSettings | None = None,
+    game_config: GameConfig | None = None,
+    seed_factory: Callable[[], int] | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         app_clock = clock or SystemClock()
-        registry = RoomRegistry(app_clock, rooms)
+        registry = RoomRegistry(app_clock, rooms, game_config=game_config)
+        if seed_factory is not None:
+            registry.seed_factory = seed_factory
         manager = ConnectionManager(app_clock, connections or ConnectionSettings(), registry)
         application.state.connections = manager
         application.state.rooms = registry

@@ -1,6 +1,6 @@
 {
-  "engine_version": "spaceship-engine-v1",
-  "config_version": "spaceship-v1",
+  "engine_version": "spaceship-engine-v3",
+  "config_version": "spaceship-v2",
   "python_version": "3.12.10",
   "seed": 42,
   "round_id": "00000000-0000-0000-0000-000000000030",
@@ -11,6 +11,7 @@
   ],
   "owners": {"pilot": 0, "engineer": 1, "shields": 2},
   "config": {
+    "emergencies_enabled": false,
     "round_duration_ms": 60000, "initial_temperature": 1000,
     "initial_engine_output": 60, "initial_hull": 600, "critical_heat_hull_damage": 1
   },

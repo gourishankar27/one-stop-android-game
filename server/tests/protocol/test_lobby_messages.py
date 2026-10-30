@@ -83,8 +83,6 @@ def test_lobby_and_reserved_operation_sets_do_not_overlap():
         "request_state",
     }
     assert RESERVED_TYPES == {
-        "play_again",
-        "return_to_lobby",
         "join_display",
     }
     assert not LOBBY_TYPES & RESERVED_TYPES

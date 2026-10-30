@@ -13,6 +13,7 @@ from uuid import UUID
 
 from one_job.protocol.envelopes import (
     AckEnvelope,
+    ActionRejectedEnvelope,
     ClientMessage,
     ErrorEnvelope,
     LobbyStateEnvelope,
@@ -63,6 +64,7 @@ class AdmissionReceipt:
 
 type ReplayReply = (
     AckEnvelope
+    | ActionRejectedEnvelope
     | ErrorEnvelope
     | LobbyStateEnvelope
     | RoleStateEnvelope

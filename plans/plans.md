@@ -4,10 +4,10 @@ This is the **only development progress ledger**. Phase files define scope and
 completion gates; documents define contracts. A checked box requires observed
 evidence for every required gate, including manual gates where specified.
 
-## Current state — 2026-10-28
+## Current state — 2026-10-29
 
-- Current phase: **08 — Role System, complete**.
-- Completed phases: **00, 01, 02, 03, 04, 05, 06, 07, 08**. Next eligible phase: **09**, awaiting explicit instruction.
+- Current phase: **10 — Emergency System, implemented; human verification pending**.
+- Completed phases: **00, 01, 02, 03, 04, 05, 06, 07, 08, 09**. Phase **10** was explicitly requested after closing Phase 09.
 - Delivered foundation: Python health service/package/tests, Compose placeholder,
   wrapper/tooling, architecture/game/protocol documents and all phase briefs.
 - Phase 00 evidence: repository checker; Python 3.12 locked setup, 2 tests,
@@ -132,6 +132,41 @@ evidence for every required gate, including manual gates where specified.
   changes were preserved. All memberships were left, emulator settings restored,
   app-scoped logs checked, and server/emulators stopped. The phone has the final
   APK at Home. Phase 09 was not started.
+- Delivered Phase 09: all nine core controls, exact heat/energy/power rules,
+  mailbox-owned 100ms simulation, 5Hz private projections, correlated action
+  outcomes and monotonic sequences, bounded Android slider/control intents,
+  owned panels, pause/recovery and minimal authoritative terminal feedback.
+- Phase 09 evidence: verified required toolchains, locked setup, 973 backend
+  tests, Ruff/format/strict mypy, wheel/sdist and repository checks passed.
+  Android debug/lint/release checks and 61 JVM tests passed; 19 instrumented tests
+  passed on each of one physical phone and two emulators, including live LAN
+  controls/resume. Actual two-/three-client UI verified station privacy, power
+  rejection, recharge/facing, raised-output accepted phone evade, shutdown,
+  dual-station switching and identical terminal state. Earlier three-emulator
+  evidence is retained separately. The user-approved mix is not three phones.
+- Remaining Phase 09 gates: none. Exact commands, resolved harness interactions,
+  retained warnings and scoped limitations are in
+  [CORE_GAMEPLAY_VALIDATION.md](../docs/CORE_GAMEPLAY_VALIDATION.md), with ADR-018.
+  No random emergencies or Phase 11 lifecycle UX was added to Phase 09. The user
+  explicitly requested Phase 10 immediately after this completion handoff.
+- Delivered Phase 10 implementation: the three documented emergencies, seeded
+  slot/threshold scheduling, stable ID-ordered effects and exact resolve/fail
+  counts; critical shared lifecycle messages, private station instructions and
+  Android warnings/badges/latest-outcome feedback. No new production dependency,
+  countdown/results/rematch, extra event type or Phase 11 work was added.
+- Phase 10 automated evidence: required toolchains/dependencies verified;
+  repository checks, 1,020 backend tests, Ruff/format/strict mypy and wheel/sdist
+  passed. Android debug/lint/release and 63 JVM tests passed; all 23 included
+  instrumented tests passed on each of the phone and two emulators. Complete
+  default seed-71 real-socket two-/three-controller rounds reached victory with
+  matching public state, private views, exact counts and no duplicate events.
+- Remaining Phase 10 gate: observed human two-/three-player coordination, with
+  one resolution and failure of each kind in each mode. The user explicitly
+  requested leaving this playtest pending. Partial normal-device observations
+  and failed experimental distributed UI drivers do not satisfy the full matrix.
+  Keep Phase 10 unchecked. Evidence, exact commands, retained warnings, local seed
+  harness/overrides and limitations: [EMERGENCY_VALIDATION.md](../docs/EMERGENCY_VALIDATION.md)
+  and ADR-019. Finish this gate before Phase 11.
 
 ## Product goal and MVP
 
@@ -172,7 +207,7 @@ another ready phase explicitly; never execute more than the selected phase.
 | [x] | [06 — Android Networking](phase-06-android-networking.md) | 03, 04, 05 | Repository and typed socket |
 | [x] | [07 — Lobby UI](phase-07-lobby-ui.md) | 04, 06 | Real multi-phone lobby |
 | [x] | [08 — Role System](phase-08-role-system.md) | 02, 07 | Private station ownership/briefing |
-| [ ] | [09 — Core Spaceship Gameplay](phase-09-core-spaceship-gameplay.md) | 02, 06, 08 | Running cooperative controls |
+| [x] | [09 — Core Spaceship Gameplay](phase-09-core-spaceship-gameplay.md) | 02, 06, 08 | Running cooperative controls |
 | [ ] | [10 — Emergency System](phase-10-emergency-system.md) | 09 | Seeded coordination emergencies |
 | [ ] | [11 — Round Lifecycle](phase-11-round-lifecycle.md) | 10 | Complete gameplay loop |
 | [ ] | [12 — Public Display](phase-12-public-display.md) | 11; optional | Extra Android observer |
@@ -347,3 +382,27 @@ and three-screen timeout abort passed. Evidence and limits are in
 ROLE_SYSTEM_VALIDATION.md and ADR-017. Prior Phase 06/07 work was preserved;
 memberships, server and verification emulators were closed and settings restored.
 No gameplay or Phase 09 work was started. Phase 09 awaits an explicit instruction.
+
+2026-10-29 (core spaceship gameplay): Phase 09 completed after the phone became
+available and its remaining LAN/manual gate passed using the approved one-phone/
+two-emulator mix. All backend/static/package/repository checks passed; 61 JVM and
+19 instrumented tests on each device passed. Actual two-/three-client controls
+showed private station panels, power pressure, accepted phone evade after raised
+output, recharge/facing, shutdown, two-station switching and matching terminal
+time/hull/shield values. No random emergency was required. Evidence is in
+CORE_GAMEPLAY_VALIDATION.md and ADR-018. Phase 10 was then explicitly authorized
+in the same user instruction; its checkbox remains open until its own gates pass.
+
+2026-10-29 (emergency system): Phase 10 implementation and independent automated
+checks finished; the phase remains open. Added the three concrete pure event
+machines, seeded capacity/threshold scheduler, ID-ordered effects, result counts,
+shared critical lifecycle messages and owned Android warnings. Numeric production
+defaults/dependency pins remain unchanged; explicit core-only fixtures preserve
+prior physics outcomes. Repository checks, 1,020 backend tests, Ruff/format/mypy,
+wheel/sdist, Android build/lint/release, 63 JVM tests and 23 included device tests
+on each of the phone and two emulators passed. Complete default seed-71 socket
+rounds passed for 2/3 controllers. Partial real-phone warning observations and
+failed experimental UI drivers are recorded candidly in EMERGENCY_VALIDATION.md.
+The user explicitly deferred the human two-/three-player resolution/failure and
+communication gate. Phase 10 stays unchecked; finish that gate before Phase 11.
+No Phase 11 implementation was started.

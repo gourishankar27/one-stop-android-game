@@ -124,19 +124,24 @@ async def check(url: str, count: int) -> dict[str, Any]:
             "wrong-role",
             {"round_id": round_id, "client_action_seq": 1, "action": wrong},
         )
-        assert (await receive(peers[0], "error", "wrong-role"))["payload"][
+        assert (await receive(peers[0], "action_rejected", "wrong-role"))["payload"][
             "code"
         ] == "not_role_owner"
         for index, peer in enumerate(peers):
             await send(peer, "briefing_ready", f"read-{index}", {"round_id": round_id})
             await receive(peer, "ack", f"read-{index}")
         for peer in peers:
+            countdown_seen = False
             while True:
                 current = (await receive(peer, "role_state"))["payload"]
-                if current["briefing"]["held_for_gameplay"]:
+                if current["public"]["stage"] == "countdown":
+                    countdown_seen = True
+                    assert current["public"]["tick_index"] == 0
+                if current["briefing"]["complete"] and current["public"]["stage"] == "running":
+                    assert countdown_seen
                     assert (
                         current["public"]["tick_index"] == 0
-                        and current["public"]["stage"] == "briefing"
+                        and not current["briefing"]["held_for_gameplay"]
                     )
                     break
         for index, peer in enumerate(peers):
@@ -144,7 +149,7 @@ async def check(url: str, count: int) -> dict[str, Any]:
             await receive(peer, "ack", f"leave-{index}")
         print(
             f"{count} controllers: private allowlists, ownership, "
-            "acknowledgements and held tick 0 passed"
+            "acknowledgements, countdown and running tick 0 passed"
         )
         return {
             "controllers": count,

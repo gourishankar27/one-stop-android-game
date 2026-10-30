@@ -74,7 +74,7 @@ def action_error(code: ActionCode) -> ErrorPayload | None:
 
 
 def public_view(state: GameState) -> PublicRoundView:
-    """Phase 02 baseline only: no emergencies or private role projections yet."""
+    """Allowlisted shared state; targets and future schedule never enter this view."""
     result = state.round.result
     result_view = None
     if result is not None:
@@ -102,7 +102,18 @@ def public_view(state: GameState) -> PublicRoundView:
             "paused_from": state.round.paused_from.value if state.round.paused_from else None,
             "hull_percent": state.ship.hull * 100 // RESOURCE_MAX,
             "shield_percent": state.ship.shield_energy * 100 // RESOURCE_MAX,
-            "warnings": (),
+            "warnings": tuple(
+                {
+                    "emergency_id": item.emergency_id,
+                    "kind": item.kind.value,
+                    "label": {
+                        "asteroid": "Asteroid approach",
+                        "overheating": "Engine overheating",
+                        "shield_overload": "Shield overload",
+                    }[item.kind.value],
+                }
+                for item in state.emergencies
+            ),
             "result": result_view,
         }
     )

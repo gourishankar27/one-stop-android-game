@@ -1,17 +1,21 @@
 """Allowlist only the requesting participant's stations; host gets no bypass."""
 
-from one_job.domain.models import GameState
+from one_job.domain.config import TICK_MS
+from one_job.domain.models import AsteroidTarget, GameState, OverheatingTarget, ShieldOverloadTarget
 from one_job.domain.roles import STATIONS
 from one_job.domain.types import PlayerId, Role
 from one_job.protocol.mapping import public_view
 from one_job.protocol.role_messages import (
     BriefingStatus,
+    EngineerInstruction,
     EngineerView,
+    PilotHazard,
     PilotView,
     RoleAssignedPayload,
     RoleInstruction,
     RoleName,
     RoleStatePayload,
+    ShieldsInstruction,
     ShieldsView,
     StationView,
 )
@@ -43,13 +47,26 @@ def player_view(
             stations["pilot"] = PilotView.model_validate(
                 {
                     "lane": ship.lane.value,
-                    "maneuver_ready": False,
+                    "maneuver_ready": (
+                        state.round.stage == "running"
+                        and ship.engine_output >= state.config.evade_min_output
+                        and ship.cooldowns.evade == 0
+                        and ship.evade_remaining_ticks == 0
+                    ),
                     "evade_remaining_ticks": ship.evade_remaining_ticks,
                     "cooldowns": {
                         "move_lane": ship.cooldowns.move_lane,
                         "evade": ship.cooldowns.evade,
                     },
-                    "hazards": (),
+                    "hazards": tuple(
+                        PilotHazard(
+                            emergency_id=item.emergency_id,
+                            impact_lane=item.target.impact_lane.value,
+                            deadline_remaining_ms=(item.deadline_tick - state.tick_index) * TICK_MS,
+                        )
+                        for item in state.emergencies
+                        if isinstance(item.target, AsteroidTarget)
+                    ),
                 }
             )
         elif role == Role.ENGINEER:
@@ -63,7 +80,20 @@ def player_view(
                         "coolant": ship.cooldowns.coolant,
                     },
                     "boost_remaining_ticks": ship.engine_boost_remaining_ticks,
-                    "instructions": (),
+                    "instructions": tuple(
+                        EngineerInstruction(
+                            emergency_id=item.emergency_id,
+                            target_max_output=item.target.max_output,
+                            target_max_temperature=(
+                                item.target.max_temperature
+                                if isinstance(item.target, OverheatingTarget)
+                                else None
+                            ),
+                            deadline_remaining_ms=(item.deadline_tick - state.tick_index) * TICK_MS,
+                        )
+                        for item in state.emergencies
+                        if isinstance(item.target, (OverheatingTarget, ShieldOverloadTarget))
+                    ),
                 }
             )
         else:
@@ -78,7 +108,20 @@ def player_view(
                     },
                     "recharge_remaining_ticks": ship.recharge_remaining_ticks,
                     "boost_remaining_ticks": ship.shield_boost_remaining_ticks,
-                    "instructions": (),
+                    "instructions": tuple(
+                        ShieldsInstruction(
+                            emergency_id=item.emergency_id,
+                            required_facing=(
+                                item.target.required_facing.value
+                                if isinstance(item.target, AsteroidTarget)
+                                else None
+                            ),
+                            deactivate=isinstance(item.target, ShieldOverloadTarget),
+                            deadline_remaining_ms=(item.deadline_tick - state.tick_index) * TICK_MS,
+                        )
+                        for item in state.emergencies
+                        if isinstance(item.target, (AsteroidTarget, ShieldOverloadTarget))
+                    ),
                 }
             )
     return RoleStatePayload(public=public_view(state), stations=stations, briefing=briefing)

@@ -21,17 +21,23 @@ from one_job.application.sessions import (
 from one_job.domain.models import Player
 from one_job.domain.types import PlayerId, ResultReason, RoundId
 from one_job.protocol.envelopes import (
+    AckEnvelope,
+    ActionRejectedEnvelope,
     BriefingReadyEnvelope,
     ClientMessage,
     CreateRoomEnvelope,
+    EmergencyEventEnvelope,
     ErrorEnvelope,
+    GameOverEnvelope,
     JoinRoomEnvelope,
     LeaveRoomEnvelope,
     PingEnvelope,
+    PlayAgainEnvelope,
     PlayerActionEnvelope,
     PlayerReadyEnvelope,
     RequestStateEnvelope,
     ResumeSessionEnvelope,
+    ReturnToLobbyEnvelope,
     RoleAssignedEnvelope,
     RoleStateEnvelope,
     ServerMessage,
@@ -42,12 +48,20 @@ from one_job.protocol.envelopes import (
     pong,
     session_accepted,
 )
+from one_job.protocol.mapping import public_view
 from one_job.protocol.messages import (
+    ERROR_MESSAGES,
+    ActionAckPayload,
     ErrorCode,
     LobbyPlayer,
     LobbyStage,
     LobbyStatePayload,
     SessionAcceptedPayload,
+)
+from one_job.protocol.role_messages import (
+    ActionRejectedPayload,
+    EmergencyEventPayload,
+    GameOverPayload,
 )
 
 if TYPE_CHECKING:
@@ -69,7 +83,7 @@ class Member:
 
 def start_eligibility(stage: LobbyStage, members: tuple[Member, ...]) -> bool:
     return (
-        stage == "lobby"
+        stage in ("lobby", "finished", "aborted")
         and len(members) in (2, 3)
         and all(
             member.session.peer is not None and member.session.peer.active and member.ready
@@ -92,6 +106,7 @@ class RoomService:
         self.host_id: UUID | None = None
         self.stage: LobbyStage = "lobby"
         self.round: RoundService | None = None
+        self._last_round: tuple[RoundId, int] | None = None
         self.revision = 0
         self.idle_deadline = registry.clock.now() + registry.settings.idle_timeout
         self._joined_order = 0
@@ -117,6 +132,11 @@ class RoomService:
                     + (
                         [self.round.deadline]
                         if self.round is not None and self.round.deadline is not None
+                        else []
+                    )
+                    + (
+                        [self.round.runner.next_deadline]
+                        if self.round is not None and self.round.runner.next_deadline is not None
                         else []
                     )
                     + [
@@ -151,6 +171,8 @@ class RoomService:
                             call.future.set_exception(error)
                         else:
                             call.future.set_result(result)
+                if not self._closed:
+                    self.advance()
         finally:
             self.delete()
             while not self._mailbox.empty():
@@ -194,15 +216,88 @@ class RoomService:
             can_start=start_eligibility(self.stage, tuple(self.members.values())),
         )
 
-    def broadcast(self, assignments: bool = False) -> None:
+    def broadcast(self, assignments: bool = False, include_lobby: bool = True) -> None:
         message = lobby_state(self.view(), self.revision)
         for member in self.members.values():
             if member.session.peer is not None:
-                member.session.peer.offer(message)
+                if include_lobby:
+                    member.session.peer.offer(message)
                 if self.round is not None:
                     if assignments:
                         member.session.peer.offer(self.assignment(member.player_id))
                     member.session.peer.offer(self.role_state(member.player_id))
+        if self.round is not None and self.round.terminal and not self.round.result_announced:
+            result = public_view(self.round.engine.snapshot()).result
+            assert result is not None
+            self.round.result_announced = True
+            event = GameOverEnvelope(
+                room_revision=self.revision,
+                payload=GameOverPayload(round_id=str(self.round.round_id), result=result),
+            )
+            for member in self.members.values():
+                if member.session.peer is not None:
+                    member.session.peer.offer(event)
+
+    def new_round(self, now: float) -> bool:
+        """Build the replacement before discarding the prior terminal context."""
+        previous = self.round
+        for _ in range(8):
+            seed = self.registry.seed_factory()
+            identity = RoundId(self.registry.round_id_factory())
+            if self._last_round is None or (
+                identity != self._last_round[0] and seed != self._last_round[1]
+            ):
+                replacement = RoundService(
+                    self.registry.game_config,
+                    seed,
+                    tuple(
+                        Player(PlayerId(item.player_id), item.name)
+                        for item in self.members.values()
+                    ),
+                    identity,
+                    now,
+                    self.registry.settings.briefing_timeout,
+                )
+                if previous is not None:
+                    previous.runner.suspend()
+                self._discard_round_views()
+                self.round = replacement
+                self._last_round = (identity, seed)
+                self.stage = replacement.stage
+                self.reset_ready()
+                return True
+        return False
+
+    def _discard_round_views(self) -> None:
+        for member in self.members.values():
+            for request_id, cached in tuple(member.session.replies.items()):
+                if isinstance(cached.reply, RoleStateEnvelope):
+                    del member.session.replies[request_id]
+
+    def advance(self) -> None:
+        if self.round is None:
+            return
+        advance = self.round.runner.advance(self.registry.clock.now())
+        if advance.steps or advance.terminal:
+            self.stage = self.round.stage
+            self.revision += max(1, advance.steps)
+            for event in advance.events:
+                message = EmergencyEventEnvelope(
+                    room_revision=self.revision,
+                    payload=EmergencyEventPayload.model_validate(
+                        {
+                            "round_id": str(self.round.round_id),
+                            "emergency_id": event.emergency_id,
+                            "kind": event.kind.value,
+                            "status": event.status,
+                        }
+                    ),
+                )
+                for member in self.members.values():
+                    if member.session.peer is not None:
+                        member.session.peer.offer(message)
+            if advance.publish:
+                self.broadcast(include_lobby=advance.terminal)
 
     def assignment(self, player_id: UUID) -> RoleAssignedEnvelope:
         assert self.round is not None
@@ -289,7 +384,11 @@ class RoomService:
             return self.registry.reject(peer, message, ErrorCode.REQUEST_ID_CONFLICT)
         if cached is not None and not isinstance(cached.reply, AdmissionReceipt):
             peer.offer(cached.reply)
-            return cached.reply.payload.code if isinstance(cached.reply, ErrorEnvelope) else None
+            return (
+                cached.reply.payload.code
+                if isinstance(cached.reply, (ErrorEnvelope, ActionRejectedEnvelope))
+                else None
+            )
         if not peer.admit():
             peer.finish(error_message(ErrorCode.NOT_AUTHENTICATED, message.request_id), 1008)
             return ErrorCode.NOT_AUTHENTICATED
@@ -345,7 +444,11 @@ class RoomService:
             if not hmac.compare_digest(cached.signature, command_signature(message)):
                 return self.error(peer, message, ErrorCode.REQUEST_ID_CONFLICT)
             peer.offer(self.materialize(cached.reply))
-            return cached.reply.payload.code if isinstance(cached.reply, ErrorEnvelope) else None
+            return (
+                cached.reply.payload.code
+                if isinstance(cached.reply, (ErrorEnvelope, ActionRejectedEnvelope))
+                else None
+            )
         code: ErrorCode | None = None
         changed = False
         if isinstance(message, PingEnvelope):
@@ -359,7 +462,7 @@ class RoomService:
                 peer.offer(self.assignment(player_id))
                 reply = self.role_state(player_id, message.request_id)
         elif isinstance(message, PlayerReadyEnvelope):
-            if self.stage != "lobby":
+            if self.stage not in ("lobby", "finished", "aborted"):
                 code = ErrorCode.INVALID_STAGE
                 reply = error_message(code, message.request_id, self.revision)
             else:
@@ -385,34 +488,45 @@ class RoomService:
             else:
                 self.delete()
             return None
-        elif isinstance(message, StartGameEnvelope):
+        elif isinstance(message, (StartGameEnvelope, PlayAgainEnvelope)):
+            allowed = (
+                ("lobby",) if isinstance(message, StartGameEnvelope) else ("finished", "aborted")
+            )
             if self.host_id != player_id:
                 code = ErrorCode.NOT_HOST
-            elif self.stage != "lobby":
+            elif self.stage not in allowed:
                 code = ErrorCode.INVALID_STAGE
             elif not start_eligibility(self.stage, tuple(self.members.values())):
                 code = ErrorCode.NOT_READY
             else:
-                self.round = RoundService(
-                    self.registry.game_config,
-                    self.registry.seed_factory(),
-                    tuple(
-                        Player(PlayerId(item.player_id), item.name)
-                        for item in self.members.values()
-                    ),
-                    RoundId(self.registry.round_id_factory()),
-                    now,
-                    self.registry.settings.briefing_timeout,
-                )
-                self.stage = self.round.stage
+                if self.new_round(now):
+                    self.revision += 1
+                    self.touch()
+                    reply = ack(message.request_id, self.revision, message.type)
+                    session.remember(message, reply, now)
+                    peer.offer(reply)
+                    self.broadcast(assignments=True)
+                    return None
+                code = ErrorCode.INTERNAL_ERROR
+            reply = error_message(code, message.request_id, self.revision)
+        elif isinstance(message, ReturnToLobbyEnvelope):
+            if self.host_id != player_id:
+                code = ErrorCode.NOT_HOST
+            elif self.stage not in ("finished", "aborted"):
+                code = ErrorCode.INVALID_STAGE
+            if code is None:
+                assert self.round is not None
+                self.round.runner.suspend()
+                self._discard_round_views()
+                self.round = None
+                self.stage = "lobby"
+                self.reset_ready()
                 self.revision += 1
                 self.touch()
-                reply = ack(message.request_id, self.revision, "start_game")
-                session.remember(message, reply, now)
-                peer.offer(reply)
-                self.broadcast(assignments=True)
-                return None
-            reply = error_message(code, message.request_id, self.revision)
+                changed = True
+                reply = ack(message.request_id, self.revision, "return_to_lobby")
+            else:
+                reply = error_message(code, message.request_id, self.revision)
         elif isinstance(message, BriefingReadyEnvelope):
             if self.round is None:
                 code = ErrorCode.INVALID_STAGE
@@ -434,16 +548,38 @@ class RoomService:
             else:
                 reply = error_message(code, message.request_id, self.revision)
         elif isinstance(message, PlayerActionEnvelope):
-            code = (
-                ErrorCode.INVALID_STAGE
-                if self.round is None
-                else self.round.action_error(
+            event = None
+            if self.round is None:
+                code = ErrorCode.INVALID_STAGE
+            else:
+                code, event = self.round.submit_action(
                     PlayerId(player_id),
                     message.payload.round_id,
+                    message.payload.client_action_seq,
                     message.payload.action,
                 )
-            )
-            reply = error_message(code, message.request_id, self.revision)
+            if code is None:
+                assert event is not None
+                self.revision += 1
+                reply = AckEnvelope(
+                    reply_to=message.request_id,
+                    room_revision=self.revision,
+                    payload=ActionAckPayload(
+                        client_action_seq=message.payload.client_action_seq,
+                        applied_tick=event.tick_index,
+                    ),
+                )
+            else:
+                reply = ActionRejectedEnvelope(
+                    reply_to=message.request_id,
+                    room_revision=self.revision,
+                    payload=ActionRejectedPayload(
+                        code=code,
+                        message=ERROR_MESSAGES[code],
+                        client_action_seq=message.payload.client_action_seq,
+                        round_id=message.payload.round_id,
+                    ),
+                )
         elif isinstance(message, (CreateRoomEnvelope, JoinRoomEnvelope, ResumeSessionEnvelope)):
             code = ErrorCode.INVALID_STAGE
             reply = error_message(code, message.request_id, self.revision)

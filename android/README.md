@@ -1,11 +1,17 @@
 # Android foundation
 
 Open this directory in Android Studio. The single-Activity shell has Home,
-Create/Join forms and a live Lobby. Role/Gameplay/Results remain previews. Phase 06
+Create/Join forms and a live Lobby. Phase 08 adds private station briefings and
+Phase 09 adds owned control panels and a minimal server terminal summary.
+Phase 10 adds public emergency labels, only-owned urgent instructions, inactive
+station badges and the latest shared lifecycle feedback, all from server DTOs.
+Phase 11 adds server Countdown, snapshot Results and explicit terminal readiness
+with host Play again/Return to lobby. Phase 06
 adds a typed, socket-owning data source and application-owned session repository.
 Phase 07 binds the forms and live lobby to that repository: name/code submission,
 room code, ID-keyed roster, host/you labels, local readiness and confirmed leave.
-Eligible host Start displays the server's planned unavailable response.
+Eligible host Start enters briefing; all acknowledgements start a 3-second server
+countdown before running.
 There are no Android gameplay rules.
 
 Toolchain: JDK 17, Gradle 8.13, AGP 8.13.2, Kotlin/Compose compiler 2.2.21,
@@ -36,8 +42,13 @@ connection feedback. The optional live-server test is skipped unless enabled bel
 Espresso 3.7.0 is explicit because the Compose test
 dependency otherwise selects 3.5.0, which fails during setup on API 37; see
 [ADR-012](../docs/DECISIONS.md#adr-012--explicit-espresso-dependency-for-the-foundation-smoke-test).
-Phase 08 observed 52 JVM tests and 15 instrumented tests passing on each of one
-physical phone and two emulators, including the enabled live-server check.
+Phase 09 closed with 61 JVM tests and 19 instrumented tests passing on each of
+one physical phone and two emulators, including the enabled LAN live-server check.
+The normal two-/three-client phone UI gate also passed. See
+[current evidence](../docs/CORE_GAMEPLAY_VALIDATION.md).
+Phase 10's included suite passes 63 JVM tests and 23 instrumented tests on each
+of the phone/two emulators. Its human coordination gate remains pending by user
+request; see [emergency verification and local seed harness](../docs/EMERGENCY_VALIDATION.md).
 On Unix, use `./gradlew` (run `chmod +x gradlew` if extraction loses permissions).
 
 Gradle uses `ANDROID_HOME` or an ignored `local.properties` containing
@@ -118,10 +129,20 @@ lobby check; multiple repositories in one app do not replace that UI verificatio
 
 The briefing shows only your station(s). Switch between Engineer and Shields
 when assigned both, read each instruction set and mark each read before
-acknowledging. All acknowledged briefings explicitly hold without gameplay.
+acknowledging. All acknowledged briefings enter server Countdown, then Gameplay.
 Pause freezes the server's acknowledgement budget; timeout/departure/grace expiry
-shows an abort with Leave. Recovery clears private presentation until the fresh
-owned snapshot arrives. Gameplay and Results remain Home previews. No credential
+shows an abort on Results. Recovery clears private presentation until the fresh
+owned snapshot arrives. Gameplay shows owned controls, server time/resources,
+cooldowns and accepted/rejected feedback. The output slider has one in-flight
+request and one conflated latest value, at most 10 sends/second. Requested output
+is distinguished from accepted output; shutdown discards queued earlier output.
+The repository owns sequences across resume/ViewModel replacement. Recovery
+clears private presentation and queued inputs; it never resends actions.
+Results renders the matching full result, including after reconnect. All members
+ready explicitly again; only the host can Play again or Return to lobby. A new
+round clears old snapshots and unsent input; lobby return resets readiness.
+Phase 11 checks and deferred phone verification are recorded in
+[ROUND_LIFECYCLE_VALIDATION.md](../docs/ROUND_LIFECYCLE_VALIDATION.md). No credential
 or private snapshot is saved through process death.
 
 Run all connected tests with the real-server case enabled:

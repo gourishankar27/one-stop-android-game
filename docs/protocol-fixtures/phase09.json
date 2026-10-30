@@ -1,0 +1,434 @@
+[
+  {
+    "request": {
+      "version": 1,
+      "type": "request_state",
+      "request_id": "state-2-1",
+      "payload": {}
+    },
+    "response": {
+      "version": 1,
+      "type": "role_state",
+      "reply_to": "state-2-1",
+      "room_revision": 12,
+      "payload": {
+        "public": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "stage": "running",
+          "tick_index": 2,
+          "remaining_ms": 89800,
+          "countdown_remaining_ms": null,
+          "paused_from": null,
+          "hull_percent": 100,
+          "shield_percent": 61,
+          "warnings": [],
+          "result": null
+        },
+        "stations": {
+          "pilot": {
+            "lane": "center",
+            "maneuver_ready": true,
+            "evade_remaining_ticks": 0,
+            "cooldowns": {
+              "move_lane": 0,
+              "evade": 0
+            },
+            "hazards": []
+          }
+        },
+        "briefing": {
+          "acknowledged": true,
+          "waiting_player_ids": [],
+          "remaining_ms": 0,
+          "complete": true,
+          "held_for_gameplay": false
+        }
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "role_assigned",
+        "reply_to": null,
+        "room_revision": 12,
+        "payload": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "roles": [
+            "pilot"
+          ],
+          "instructions": [
+            {
+              "role": "pilot",
+              "title": "Pilot",
+              "steps": [
+                "Choose the ship's lane and call out where cover is needed.",
+                "Ask Engineer for enough output before an evasive maneuver."
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "request": {
+      "version": 1,
+      "type": "request_state",
+      "request_id": "state-2-2",
+      "payload": {}
+    },
+    "response": {
+      "version": 1,
+      "type": "role_state",
+      "reply_to": "state-2-2",
+      "room_revision": 12,
+      "payload": {
+        "public": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "stage": "running",
+          "tick_index": 2,
+          "remaining_ms": 89800,
+          "countdown_remaining_ms": null,
+          "paused_from": null,
+          "hull_percent": 100,
+          "shield_percent": 61,
+          "warnings": [],
+          "result": null
+        },
+        "stations": {
+          "engineer": {
+            "output": 60,
+            "temperature": 312,
+            "available_power": 0,
+            "cooldowns": {
+              "engine_boost": 98,
+              "coolant": 0
+            },
+            "boost_remaining_ticks": 18,
+            "instructions": []
+          },
+          "shields": {
+            "energy": 610,
+            "active": true,
+            "facing": "left",
+            "cooldowns": {
+              "recharge_shield": 58,
+              "shield_boost": 0
+            },
+            "recharge_remaining_ticks": 28,
+            "boost_remaining_ticks": 0,
+            "instructions": []
+          }
+        },
+        "briefing": {
+          "acknowledged": true,
+          "waiting_player_ids": [],
+          "remaining_ms": 0,
+          "complete": true,
+          "held_for_gameplay": false
+        }
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "role_assigned",
+        "reply_to": null,
+        "room_revision": 12,
+        "payload": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "roles": [
+            "engineer",
+            "shields"
+          ],
+          "instructions": [
+            {
+              "role": "engineer",
+              "title": "Engineer",
+              "steps": [
+                "Balance engine output against heat and the crew's power needs.",
+                "Use coolant when needed and tell Shields when power is tight."
+              ]
+            },
+            {
+              "role": "shields",
+              "title": "Shields",
+              "steps": [
+                "Point protection toward the danger and watch shield energy.",
+                "Coordinate power with Engineer and announce which side is covered."
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "request": {
+      "version": 1,
+      "type": "request_state",
+      "request_id": "state-3-1",
+      "payload": {}
+    },
+    "response": {
+      "version": 1,
+      "type": "role_state",
+      "reply_to": "state-3-1",
+      "room_revision": 12,
+      "payload": {
+        "public": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "stage": "running",
+          "tick_index": 2,
+          "remaining_ms": 89800,
+          "countdown_remaining_ms": null,
+          "paused_from": null,
+          "hull_percent": 100,
+          "shield_percent": 61,
+          "warnings": [],
+          "result": null
+        },
+        "stations": {
+          "engineer": {
+            "output": 60,
+            "temperature": 312,
+            "available_power": 0,
+            "cooldowns": {
+              "engine_boost": 98,
+              "coolant": 0
+            },
+            "boost_remaining_ticks": 18,
+            "instructions": []
+          }
+        },
+        "briefing": {
+          "acknowledged": true,
+          "waiting_player_ids": [],
+          "remaining_ms": 0,
+          "complete": true,
+          "held_for_gameplay": false
+        }
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "role_assigned",
+        "reply_to": null,
+        "room_revision": 12,
+        "payload": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "roles": [
+            "engineer"
+          ],
+          "instructions": [
+            {
+              "role": "engineer",
+              "title": "Engineer",
+              "steps": [
+                "Balance engine output against heat and the crew's power needs.",
+                "Use coolant when needed and tell Shields when power is tight."
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "request": {
+      "version": 1,
+      "type": "request_state",
+      "request_id": "state-3-2",
+      "payload": {}
+    },
+    "response": {
+      "version": 1,
+      "type": "role_state",
+      "reply_to": "state-3-2",
+      "room_revision": 12,
+      "payload": {
+        "public": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "stage": "running",
+          "tick_index": 2,
+          "remaining_ms": 89800,
+          "countdown_remaining_ms": null,
+          "paused_from": null,
+          "hull_percent": 100,
+          "shield_percent": 61,
+          "warnings": [],
+          "result": null
+        },
+        "stations": {
+          "shields": {
+            "energy": 610,
+            "active": true,
+            "facing": "left",
+            "cooldowns": {
+              "recharge_shield": 58,
+              "shield_boost": 0
+            },
+            "recharge_remaining_ticks": 28,
+            "boost_remaining_ticks": 0,
+            "instructions": []
+          }
+        },
+        "briefing": {
+          "acknowledged": true,
+          "waiting_player_ids": [],
+          "remaining_ms": 0,
+          "complete": true,
+          "held_for_gameplay": false
+        }
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "role_assigned",
+        "reply_to": null,
+        "room_revision": 12,
+        "payload": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "roles": [
+            "shields"
+          ],
+          "instructions": [
+            {
+              "role": "shields",
+              "title": "Shields",
+              "steps": [
+                "Point protection toward the danger and watch shield energy.",
+                "Coordinate power with Engineer and announce which side is covered."
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "request": {
+      "version": 1,
+      "type": "request_state",
+      "request_id": "state-3-3",
+      "payload": {}
+    },
+    "response": {
+      "version": 1,
+      "type": "role_state",
+      "reply_to": "state-3-3",
+      "room_revision": 12,
+      "payload": {
+        "public": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "stage": "running",
+          "tick_index": 2,
+          "remaining_ms": 89800,
+          "countdown_remaining_ms": null,
+          "paused_from": null,
+          "hull_percent": 100,
+          "shield_percent": 61,
+          "warnings": [],
+          "result": null
+        },
+        "stations": {
+          "pilot": {
+            "lane": "center",
+            "maneuver_ready": true,
+            "evade_remaining_ticks": 0,
+            "cooldowns": {
+              "move_lane": 0,
+              "evade": 0
+            },
+            "hazards": []
+          }
+        },
+        "briefing": {
+          "acknowledged": true,
+          "waiting_player_ids": [],
+          "remaining_ms": 0,
+          "complete": true,
+          "held_for_gameplay": false
+        }
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "role_assigned",
+        "reply_to": null,
+        "room_revision": 12,
+        "payload": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "roles": [
+            "pilot"
+          ],
+          "instructions": [
+            {
+              "role": "pilot",
+              "title": "Pilot",
+              "steps": [
+                "Choose the ship's lane and call out where cover is needed.",
+                "Ask Engineer for enough output before an evasive maneuver."
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "request": {
+      "version": 1,
+      "type": "player_action",
+      "request_id": "power",
+      "payload": {
+        "round_id": "00000000-0000-0000-0000-000000000063",
+        "client_action_seq": 1,
+        "action": {
+          "type": "set_engine_power",
+          "value": 60
+        }
+      }
+    },
+    "response": {
+      "version": 1,
+      "type": "ack",
+      "reply_to": "power",
+      "room_revision": 13,
+      "payload": {
+        "operation": "player_action",
+        "client_action_seq": 1,
+        "applied_tick": 2
+      }
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "type": "player_action",
+      "request_id": "boost",
+      "payload": {
+        "round_id": "00000000-0000-0000-0000-000000000063",
+        "client_action_seq": 2,
+        "action": {
+          "type": "shield_boost"
+        }
+      }
+    },
+    "response": {
+      "version": 1,
+      "type": "action_rejected",
+      "reply_to": "boost",
+      "room_revision": 13,
+      "payload": {
+        "code": "insufficient_power",
+        "message": "There is insufficient available power.",
+        "client_action_seq": 2,
+        "round_id": "00000000-0000-0000-0000-000000000063"
+      }
+    }
+  }
+]

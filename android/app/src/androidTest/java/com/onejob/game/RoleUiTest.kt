@@ -78,15 +78,16 @@ class RoleUiTest {
         compose.onNodeWithText("Gameplay preview").assertDoesNotExist()
     }
 
-    @Test fun serverTimeoutShowsExplicitAbortWithoutResultsOrControls() {
+    @Test fun serverTimeoutOpensAuthoritativeResultsWithoutControls() {
         val repo = RoleUiRepository(false); show(repo)
         compose.runOnIdle {
             val state = repo.session.value.roleState!!
             val result = RoundResult("aborted", "briefing_timeout", 0, 100, 0, 0, emptyList())
             repo.session.value = repo.session.value.copy(roleState = state.copy(public = state.public.copy(stage = "aborted", result = result)))
         }
-        compose.onNodeWithText("Briefing timed out. Leave this room to try again.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("acknowledgeBriefing").assertIsNotEnabled()
+        compose.onNodeWithText("Briefing timed out before everyone acknowledged.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("terminalSummary").performScrollTo().assertTextEquals("Round aborted")
+        compose.onNodeWithTag("acknowledgeBriefing").assertDoesNotExist()
         compose.onNodeWithText("Results preview").assertDoesNotExist()
     }
 }

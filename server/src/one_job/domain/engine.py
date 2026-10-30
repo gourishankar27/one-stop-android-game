@@ -19,7 +19,8 @@ from one_job.domain.actions import (
     SetShield,
     ShieldBoost,
 )
-from one_job.domain.config import TICK_MS, GameConfig
+from one_job.domain.config import COUNTDOWN_MS, TICK_MS, GameConfig
+from one_job.domain.emergencies import EmergencyChanged, advance_emergencies
 from one_job.domain.models import (
     GameResult,
     GameState,
@@ -28,7 +29,8 @@ from one_job.domain.models import (
     RoundState,
     ShipState,
 )
-from one_job.domain.rules import advance_ship
+from one_job.domain.rules import advance_ship, age_ship
+from one_job.domain.scheduler import EmergencyScheduler
 from one_job.domain.types import (
     Lane,
     MoveDirection,
@@ -39,8 +41,8 @@ from one_job.domain.types import (
     RoundStage,
 )
 
-ENGINE_VERSION = "spaceship-engine-v1"
-type EngineAction = SetEnginePower | MoveLane | Coolant
+ENGINE_VERSION = "spaceship-engine-v3"
+type EngineAction = PlayerAction
 
 
 class ActionCode(StrEnum):
@@ -90,13 +92,13 @@ class RoundEnded:
 @dataclass(frozen=True, slots=True)
 class TickResult:
     state: GameState
-    events: tuple[RoundEnded, ...] = ()
+    events: tuple[EmergencyChanged | RoundEnded, ...] = ()
 
 
 class GameEngine:
     """Own one round. Call actions in authoritative order, then tick whole steps."""
 
-    __slots__ = ("_state", "_rng", "_accepted_actions")
+    __slots__ = ("_state", "_rng", "_accepted_actions", "_scheduler", "_resolved", "_failed")
 
     def __init__(
         self,
@@ -126,6 +128,9 @@ class GameEngine:
                 raise ValueError("rng must be a Random")
             self._rng.setstate(rng.getstate())
         self._accepted_actions: list[ActionApplied] = []
+        self._scheduler = EmergencyScheduler(config, self._rng)
+        self._resolved = 0
+        self._failed = 0
 
     def snapshot(self) -> GameState:
         """Return the immutable internal snapshot; callers must project it for transport."""
@@ -140,6 +145,33 @@ class GameEngine:
             raise ValueError("a round can only be started once")
         self._state = replace(
             self._state, round=replace(self._state.round, stage=RoundStage.RUNNING)
+        )
+        return self._state
+
+    def begin_countdown(self) -> GameState:
+        """Enter a pure pre-game countdown; resources, ticks and RNG stay frozen."""
+        if self._state.round.stage != RoundStage.BRIEFING:
+            raise ValueError("only a briefing can enter countdown")
+        self._state = replace(
+            self._state,
+            round=replace(
+                self._state.round, stage=RoundStage.COUNTDOWN, countdown_remaining_ms=COUNTDOWN_MS
+            ),
+        )
+        return self._state
+
+    def advance_countdown(self, elapsed_ms: int) -> GameState:
+        integer(elapsed_ms, "elapsed_ms", 1)
+        if self._state.round.stage != RoundStage.COUNTDOWN:
+            raise ValueError("only an active countdown can advance")
+        remaining = max(0, (self._state.round.countdown_remaining_ms or 0) - elapsed_ms)
+        self._state = replace(
+            self._state,
+            round=replace(
+                self._state.round,
+                stage=RoundStage.COUNTDOWN if remaining else RoundStage.RUNNING,
+                countdown_remaining_ms=remaining if remaining else None,
+            ),
         )
         return self._state
 
@@ -212,9 +244,12 @@ class GameEngine:
             self._state.tick_index * TICK_MS,
             self._state.ship.hull,
             players=self._state.players,
+            resolved_count=self._resolved,
+            failed_count=self._failed,
         )
         self._state = replace(
             self._state,
+            emergencies=(),
             round=replace(
                 self._state.round,
                 stage=RoundStage.ABORTED,
@@ -233,17 +268,6 @@ class GameEngine:
         authorization = self.authorize_action(actor_id, action)
         if authorization != ActionCode.ACCEPTED:
             return ActionResult(authorization)
-        if type(action) in (
-            Evade,
-            EngineBoost,
-            EmergencyShutdown,
-            SetShield,
-            RechargeShield,
-            ShieldBoost,
-        ):
-            return ActionResult(ActionCode.FEATURE_UNAVAILABLE)
-        if type(action) not in (SetEnginePower, MoveLane, Coolant):
-            return ActionResult(ActionCode.INVALID_ACTION)
         # Revalidate the value object before any mutation, even if a caller bypassed freezing.
         try:
             action = replace(action)
@@ -280,6 +304,59 @@ class GameEngine:
                 cooldowns=replace(ship.cooldowns, coolant=state.config.coolant_cooldown_ticks),
             )
             applied = action
+        elif isinstance(action, Evade):
+            if ship.cooldowns.evade or ship.evade_remaining_ticks:
+                return ActionResult(ActionCode.COOLDOWN)
+            if ship.engine_output < state.config.evade_min_output:
+                return ActionResult(ActionCode.INSUFFICIENT_POWER)
+            ship = replace(
+                ship,
+                evade_remaining_ticks=state.config.evade_duration_ticks,
+                cooldowns=replace(ship.cooldowns, evade=state.config.evade_cooldown_ticks),
+            )
+            applied = action
+        elif isinstance(action, EmergencyShutdown):
+            ship = replace(
+                ship,
+                engine_output=0,
+                engine_boost_remaining_ticks=0,
+                recharge_remaining_ticks=0,
+                shield_boost_remaining_ticks=0,
+                shield_active=False,
+            )
+            applied = action
+        elif isinstance(action, SetShield):
+            if action.active and ship.shield_energy == 0:
+                return ActionResult(ActionCode.INVALID_ACTION)
+            ship = replace(ship, shield_active=action.active, shield_facing=action.facing)
+            if ship.available_power(state.config) < 0:
+                return ActionResult(ActionCode.INSUFFICIENT_POWER)
+            applied = action
+        elif isinstance(action, (EngineBoost, RechargeShield, ShieldBoost)):
+            if isinstance(action, EngineBoost):
+                duration, cooldown = "engine_boost_remaining_ticks", "engine_boost"
+                ticks = state.config.engine_boost_duration_ticks
+                wait = state.config.engine_boost_cooldown_ticks
+            elif isinstance(action, RechargeShield):
+                duration, cooldown = "recharge_remaining_ticks", "recharge_shield"
+                ticks = state.config.recharge_duration_ticks
+                wait = state.config.recharge_cooldown_ticks
+            else:
+                duration, cooldown = "shield_boost_remaining_ticks", "shield_boost"
+                ticks = state.config.shield_boost_duration_ticks
+                wait = state.config.shield_boost_cooldown_ticks
+            if getattr(ship, duration) or getattr(ship.cooldowns, cooldown):
+                return ActionResult(ActionCode.COOLDOWN)
+            cooldowns = replace(ship.cooldowns, **{cooldown: wait})
+            if isinstance(action, EngineBoost):
+                ship = replace(ship, engine_boost_remaining_ticks=ticks, cooldowns=cooldowns)
+            elif isinstance(action, RechargeShield):
+                ship = replace(ship, recharge_remaining_ticks=ticks, cooldowns=cooldowns)
+            else:
+                ship = replace(ship, shield_boost_remaining_ticks=ticks, cooldowns=cooldowns)
+            if ship.available_power(state.config) < 0:
+                return ActionResult(ActionCode.INSUFFICIENT_POWER)
+            applied = action
         else:
             return ActionResult(ActionCode.INVALID_ACTION)
         candidate = replace(state, ship=ship)
@@ -293,13 +370,21 @@ class GameEngine:
         integer(steps, "steps", 1)
         if self._state.round.stage == RoundStage.BRIEFING:
             raise ValueError("start the round before ticking")
-        events: list[RoundEnded] = []
+        events: list[EmergencyChanged | RoundEnded] = []
         for _ in range(steps):
             if self._state.round.stage != RoundStage.RUNNING:
                 break
             state = self._state
-            ship = advance_ship(state.ship, state.config)
             tick_index = state.tick_index + 1
+            continuous = advance_ship(state.ship, state.config, age_timers=False)
+            emergencies = advance_emergencies(
+                continuous, state.emergencies, tick_index, state.config
+            )
+            ship = age_ship(emergencies.ship)
+            active = emergencies.active
+            events.extend(emergencies.events)
+            self._resolved += sum(event.status == "resolved" for event in emergencies.events)
+            self._failed += sum(event.status == "failed" for event in emergencies.events)
             result: GameResult | None = None
             if ship.hull == 0 or tick_index == state.config.duration_ticks:
                 outcome = Outcome.DEFEAT if ship.hull == 0 else Outcome.VICTORY
@@ -309,14 +394,20 @@ class GameEngine:
                     survived_ms=tick_index * TICK_MS,
                     final_hull=ship.hull,
                     players=state.players,
+                    resolved_count=self._resolved,
+                    failed_count=self._failed,
                 )
+                active = ()
+            else:
+                active, started = self._scheduler.start_due(tick_index, ship, active)
+                events.extend(started)
             round_state = replace(
                 state.round,
                 stage=RoundStage.FINISHED if result is not None else RoundStage.RUNNING,
                 tick_index=tick_index,
                 result=result,
             )
-            self._state = replace(state, ship=ship, round=round_state)
+            self._state = replace(state, ship=ship, round=round_state, emergencies=active)
             if result is not None:
                 events.append(RoundEnded(result))
                 break

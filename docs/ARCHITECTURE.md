@@ -12,14 +12,15 @@ Phase 02 adds `domain/engine.py` and `rules.py`: a synchronous, single-owner
 baseline with power/lane/coolant intents, fixed-step heat/hull/cooldown updates,
 immutable snapshots, ordered accepted-command records and one terminal event.
 It consumes no clocks, environment configuration or network libraries. Complete
-simulation and live room-to-engine orchestration remain later work.
+controls and live orchestration are extended in Phase 09. Phase 10 adds the three
+pure event rules and a tick-driven seeded scheduler, without new infrastructure.
 
 The engine receives config, integer seed, roster, assignments and round ID.
 `start()` returns the running tick-zero snapshot; `apply_action()` returns a typed
 accept/reject result; `tick(steps)` returns state and terminal events; `snapshot()`
 and `accepted_actions` expose immutable internal values. One caller owns it and
 applies commands in authoritative order before advancing whole steps. There is
-no concurrent queue or scheduler in the engine. Phase 03 maps its typed action
+no concurrent queue or wall-clock scheduler in the engine. Phase 03 maps its typed action
 results and snapshots to explicit boundary DTOs rather than serializing them.
 
 Phase 03 implements `/ws` for ping/pong and structured errors. Reserved commands
@@ -55,20 +56,23 @@ metadata remains in `domain/roles.py`; `application/projections.py` constructs
 allowlisted owned DTOs. Public role state contains only common round fields;
 exact station values and instructions are targeted, including for the host.
 The existing mailbox deadline handles the 60-second acknowledgement budget and
-suspends it during disconnect grace. All acknowledgements hold in briefing with
-no engine start/ticks; leave, grace expiry and briefing timeout abort. Full
+suspends it during disconnect grace. Phase 08 held after all acknowledgements;
+Phase 09 starts running directly. Leave, grace expiry and briefing timeout abort. Full
 private state requests/replays are scoped to a single authenticated membership.
 See [ADR-017](DECISIONS.md#adr-017--private-briefing-rounds-held-before-gameplay).
 
 `application/engine_adapter.py` accepts an explicit engine fixture and `TickSource`.
-It maps three existing typed action DTOs into domain values, typed domain rejection
+It maps typed action DTOs into domain values, typed domain rejection
 codes into safe errors, and public fields/percentages into `PublicRoundView`.
-The baseline has no emergencies, so public warnings are empty. It creates no
+Core-only fixtures explicitly disable emergencies. The adapter creates no
 tasks, and its awaited `step()` advances exactly one domain tick after a supplied
 tick signal. `FixedStepTicker` is pull-driven with injected 100ms deadlines.
-The socket never calls this adapter; future room ownership will orchestrate it.
-Owned station projections are implemented for briefing in Phase 08; live
-ticking/catch-up policy and event dispatch remain later phases. The current
+The Phase 09 room runner owns the engine directly; this adapter remains a
+fixture helper, not another scheduler. Owned station projections extend Phase 08
+briefing into running. Phase 10 sends shared lifecycle events through the same
+room owner and critical outbox, while targeted snapshots contain only owned
+instructions. `create_app` accepts optional config/seed-factory constructor
+arguments for an explicit local CLI harness, never client-supplied parameters. The current
 public-state DTO prepares coalescing tests, not observer
 admission or public broadcasts.
 
@@ -112,10 +116,21 @@ Lifespan shutdown cancels/awaits room and connection tasks and closes sockets.
 
 ## Time, replay and ordering
 
+Phase 09 completes the catalog in the existing pure engine. A synchronous
+`application/room_runner.py` is called only by the existing room mailbox. The
+last briefing acknowledgement starts running directly; countdown is Phase 11.
+Commands dispatched that turn precede continuous steps and record authoritative
+tick/order. Typed current-round action attempts consume per-player monotonic
+sequence on rejection too; replay cache checks precede sequence validation.
+Tick/action revisions advance independently of the 5Hz private snapshot cadence.
+Lifecycle changes also send lobby state. Terminal private state is immediate,
+cannot coalesce away, and stops scheduling. Socket offers stay bounded/nonblocking.
+
 The engine advances in fixed 100 ms steps, using integer milliseconds and an
 integer tick index. A wall-clock scheduler uses `time.monotonic()` outside the
 engine and drains accumulated time in fixed steps. Allow at most five catch-up
-ticks per scheduler turn; persistent lag aborts the round with `server_overload`
+ticks per scheduler turn; a second consecutive turn still owing more than five
+aborts the round with `server_overload`
 instead of changing the physics timestep. State broadcasts target 5 Hz initially.
 
 Commands get an authoritative `(tick_index, order)` at the room boundary. At
@@ -235,6 +250,19 @@ A process restart destroys rooms and credentials. The client returns to join/hom
 with a useful explanation. Run a single worker; scaling with shared ownership is
 future work. WSS is required for external testing. Debug WS on a trusted LAN is
 explicitly opt-in and added in Phase 06. No automatic deploy is part of a plan.
+
+Android `GameplayViewModel` emits bounded owned intents and renders accepted
+snapshots without physics. Output uses one in-flight request plus one conflated
+latest value at most 10Hz; recovery/stage/round/shutdown invalidate old queued
+input. The repository allocates current-round action sequence across ViewModel
+replacement/resume. Countdown and Results use matched authoritative snapshots,
+including restored terminal snapshots. The shared room-command ViewModel sends
+explicit terminal readiness and host-only Play again/Return to lobby; it never
+changes stage optimistically. Round replacement/lobby return retires old views,
+sequences and queued inputs. See
+[ADR-018](DECISIONS.md#adr-018--core-controls-and-a-mailbox-owned-fixed-step-runner).
+Phase 11 reuses this runner for countdown and retains bounded terminal/replay
+state; lifecycle choices are recorded in ADR-020 in [DECISIONS.md](DECISIONS.md).
 
 ## Future scenarios
 

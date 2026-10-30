@@ -2,25 +2,24 @@
 
 All numeric values below are **initial playtest assumptions**, not proven balance.
 Change them in configuration, record the reason, and keep deterministic tests.
-Phase 02 implements the engine subset described below; complete cooperative
-controls arrive in Phase 09 and emergencies in Phase 10. The full catalog remains
-the intended design and is not all executable yet.
+Phase 09 implements the complete control/physics catalog below and the live
+authoritative runner. Phase 10 implements the three emergencies below; Phase 11
+adds the server countdown and complete results/rematch/lobby flow.
 
 Phase 01 now defines the data and validated settings for these rules, without
 executing them. The single source of default values is
-[`GameConfig`](../server/src/one_job/domain/config.py) (`spaceship-v1`). The tables
+[`GameConfig`](../server/src/one_job/domain/config.py) (`spaceship-v2`). The tables
 below explain that baseline; update them when deliberately changing its defaults.
 Construction examples and actual type names are in [GAME_STATE.md](GAME_STATE.md).
 
-The implemented Phase 02 subset is `set_engine_power`, `move_lane` and `coolant`,
-with base heat/cooling, critical-heat hull damage, movement/coolant cooldowns and
-the configured round timer. Explicit caller-supplied assignments are required.
-`start()` enters running directly for pure engine use; no party briefing/countdown
-or room runner is connected. The six remaining action records return an explicit
-unavailable result without executing effects. No emergency is spawned, including
-overheating, and no RNG draw occurs. Shield flags/energy remain at initial values
-until Phase 09 adds their dynamics; configured power reservations still constrain
-output changes. The baseline round alone is not the cooperative party game.
+The Phase 02 three-action baseline is preserved and extended by Phase 09 to all
+nine actions, active durations and shield dynamics. Explicit assignments remain
+required by the pure engine. After all server briefings acknowledge, the room
+enters a 3-second server countdown, then running at gameplay tick zero.
+Phase 10 uses the post-assignment seeded stream for scheduled events and targets.
+Numeric defaults are unchanged; engine rules version is `spaceship-engine-v3`.
+`emergencies_enabled` defaults to true; explicit false is reserved for core-only
+verification/configuration and cannot be selected through client commands.
 
 Commands apply at completed-tick boundary n before step n+1. Heat is updated and
 clamped before critical damage; cooldowns age with each step. A command with a
@@ -91,6 +90,13 @@ available power = generation minus active reservations. The same action cannot
 stack its own active effect. Cooldowns begin when accepted, not when requested.
 Resource updates are applied each tick, clamped to bounds, then any zero-energy
 deactivation releases power. Shutdown cancels active effects but keeps cooldowns.
+Heat includes active boost before clamping/critical damage. Recharge/boost gains
+and active shield drain are summed before one energy clamp; effects apply for
+their last remaining tick before durations/cooldowns age. Shutdown preserves an
+already active evade. Active effects cannot stack even when a custom cooldown
+ends before their duration. Zero-energy shield activation is invalid; output or
+spare-power shortfall rejects with insufficient power. No partial facing change
+is applied when activation fails.
 Reject actions that fail stage, ownership, power or cooldown checks without any
 partial mutation. Ship systems without emergencies provide a testable baseline;
 the public party loop comes from emergency coordination.
@@ -113,6 +119,10 @@ If both maneuver and shield conditions hold, maneuver wins and costs no shield
 energy. Other emergency success checks precede deadline failure on the final tick.
 Apply simultaneous emergency effects in stable emergency-ID order. Engine failure
 checks then take precedence over victory if hull and time both reach zero.
+Continuous resources apply before emergency checks; durations/cooldowns age after
+them, so the final active evade tick still protects. Newly started events begin
+progress on the next tick. Threshold overheat is reconsidered before a scheduled
+slot when capacity opens; this decides the tie if only one slot remains.
 
 Random scheduling starts at tick 80. At each scheduled slot choose uniformly from
 eligible asteroid/overload kinds in stable enum order. When no kind/capacity is
@@ -123,6 +133,16 @@ crossing while capacity is full is reconsidered once capacity opens if still hot
 Never pre-send the schedule or seed to clients. Navigation malfunction and an
 independent power-shortage emergency are deferred; the Engineer can show a local
 low-power indicator when free power is below 10, with no extra random event.
+
+Implemented APIs: `EmergencyScheduler.start_due` owns slots/IDs and the injected
+RNG; `advance_emergencies` evaluates existing events in ascending ID order.
+`EmergencyChanged` carries only ID/kind/status/tick internally; the wire event
+omits the tick and never includes a target. Completed events leave active state
+and increment the result counters once. Pause freezes event time/RNG. Terminal
+and abort clear unfinished warnings without counting them as failures.
+See ADR-019 and the explicit local seed/config harness in `server/examples/`.
+Its opt-in `verification` profile lengthens UI windows and lowers damage for
+device inspection; it does not change production defaults or establish balance.
 
 ## End conditions and difficulty
 

@@ -76,8 +76,26 @@ class LiveServerNetworkingTest {
                 assertTrue(stale is CommandResult.Rejected && stale.code == RemoteCode.STALE_ROUND)
                 assertTrue(host.acknowledgeBriefing(roundId) is CommandResult.Accepted)
                 assertTrue(guest.acknowledgeBriefing(roundId) is CommandResult.Accepted)
-                host.session.first { it.roleState?.briefing?.held_for_gameplay == true }
-                assertEquals(0L, host.session.value.roleState!!.public.tick_index)
+                host.session.first { it.roleState?.public?.stage == "running" }
+                val engineer = if (com.onejob.game.data.protocol.StationRole.ENGINEER in hostBriefing.assigned.roles) host else guest
+                val pilot = if (engineer === host) guest else host
+                fun actionAccepted(result: CommandResult) {
+                    assertTrue(result is CommandResult.Accepted && result.sequence != null && result.appliedTick != null)
+                }
+                actionAccepted(engineer.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.SetShield(true, com.onejob.game.data.protocol.Facing.LEFT)))
+                actionAccepted(engineer.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.RechargeShield))
+                val pressure = engineer.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.EngineBoost)
+                assertTrue(pressure is CommandResult.Rejected && pressure.code == RemoteCode.INSUFFICIENT_POWER)
+                actionAccepted(engineer.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.SetEnginePower(100)))
+                actionAccepted(engineer.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.EngineBoost))
+                actionAccepted(engineer.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.ShieldBoost))
+                actionAccepted(pilot.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.MoveLane(com.onejob.game.data.protocol.Direction.LEFT)))
+                actionAccepted(pilot.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.Evade))
+                actionAccepted(engineer.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.Coolant))
+                engineer.session.first { it.roleState?.stations?.engineer?.output == 100 }
+                pilot.session.first { it.roleState?.stations?.pilot?.lane == com.onejob.game.data.protocol.LaneValue.LEFT }
+                actionAccepted(engineer.performAction(roundId, com.onejob.game.data.protocol.PlayerAction.EmergencyShutdown))
+                engineer.session.first { it.roleState?.stations?.engineer?.output == 0 && it.roleState.stations.shields?.active == false }
 
                 source.latest!!.cancel()
                 host.connection.first { it.status == ConnectionStatus.RECONNECTING }
@@ -88,10 +106,15 @@ class LiveServerNetworkingTest {
                     .second
                 assertEquals(identity, recovered.identity)
                 assertEquals(roundId, recovered.assigned!!.round_id)
-                assertTrue(recovered.roleState!!.briefing.acknowledged && recovered.roleState.briefing.held_for_gameplay)
+                assertTrue(recovered.roleState!!.briefing.acknowledged && !recovered.roleState.briefing.held_for_gameplay)
+                assertEquals("running", recovered.roleState.public.stage)
                 assertEquals(2, recovered.lobby!!.players.size)
                 assertTrue("Readiness must come from the resumed server snapshot", recovered.lobby.players.none { it.ready })
                 assertEquals("Only one replacement socket is expected", 2, source.opens.get())
+                val resumedAction = if (com.onejob.game.data.protocol.StationRole.PILOT in recovered.assigned.roles)
+                    com.onejob.game.data.protocol.PlayerAction.MoveLane(com.onejob.game.data.protocol.Direction.RIGHT)
+                else com.onejob.game.data.protocol.PlayerAction.EmergencyShutdown
+                actionAccepted(host.performAction(roundId, resumedAction))
                 assertTrue(host.requestState() is CommandResult.Accepted)
                 assertTrue(guest.leave() is CommandResult.Accepted)
                 host.session.first { it.lobby?.players?.size == 1 }

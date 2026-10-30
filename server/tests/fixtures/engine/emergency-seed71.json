@@ -1,0 +1,138 @@
+{
+  "engine_version": "spaceship-engine-v3",
+  "config_version": "spaceship-v2",
+  "python_version": "3.12.10",
+  "seed": 71,
+  "events": [
+    {
+      "emergency_id": 1,
+      "kind": "shield_overload",
+      "status": "started",
+      "tick_index": 80
+    },
+    {
+      "emergency_id": 1,
+      "kind": "shield_overload",
+      "status": "failed",
+      "tick_index": 150
+    },
+    {
+      "emergency_id": 2,
+      "kind": "asteroid",
+      "status": "started",
+      "tick_index": 192
+    },
+    {
+      "emergency_id": 3,
+      "kind": "overheating",
+      "status": "started",
+      "tick_index": 250
+    },
+    {
+      "emergency_id": 2,
+      "kind": "asteroid",
+      "status": "failed",
+      "tick_index": 272
+    },
+    {
+      "emergency_id": 3,
+      "kind": "overheating",
+      "status": "resolved",
+      "tick_index": 281
+    },
+    {
+      "emergency_id": 4,
+      "kind": "shield_overload",
+      "status": "started",
+      "tick_index": 284
+    },
+    {
+      "emergency_id": 4,
+      "kind": "shield_overload",
+      "status": "resolved",
+      "tick_index": 304
+    },
+    {
+      "emergency_id": 5,
+      "kind": "asteroid",
+      "status": "started",
+      "tick_index": 369
+    },
+    {
+      "emergency_id": 5,
+      "kind": "asteroid",
+      "status": "failed",
+      "tick_index": 449
+    },
+    {
+      "emergency_id": 6,
+      "kind": "asteroid",
+      "status": "started",
+      "tick_index": 467
+    },
+    {
+      "emergency_id": 6,
+      "kind": "asteroid",
+      "status": "failed",
+      "tick_index": 547
+    },
+    {
+      "emergency_id": 7,
+      "kind": "shield_overload",
+      "status": "started",
+      "tick_index": 560
+    },
+    {
+      "emergency_id": 7,
+      "kind": "shield_overload",
+      "status": "resolved",
+      "tick_index": 580
+    },
+    {
+      "emergency_id": 8,
+      "kind": "asteroid",
+      "status": "started",
+      "tick_index": 649
+    },
+    {
+      "emergency_id": 9,
+      "kind": "shield_overload",
+      "status": "started",
+      "tick_index": 691
+    },
+    {
+      "emergency_id": 9,
+      "kind": "shield_overload",
+      "status": "resolved",
+      "tick_index": 711
+    },
+    {
+      "emergency_id": 8,
+      "kind": "asteroid",
+      "status": "failed",
+      "tick_index": 729
+    }
+  ],
+  "result": {
+    "outcome": "defeat",
+    "reason": "hull_destroyed",
+    "survived_ms": 72900,
+    "final_hull": 0,
+    "players": [
+      {
+        "player_id": "00000000-0000-0000-0000-000000000001",
+        "name": "Crew 1"
+      },
+      {
+        "player_id": "00000000-0000-0000-0000-000000000002",
+        "name": "Crew 2"
+      },
+      {
+        "player_id": "00000000-0000-0000-0000-000000000003",
+        "name": "Crew 3"
+      }
+    ],
+    "resolved_count": 4,
+    "failed_count": 5
+  }
+}

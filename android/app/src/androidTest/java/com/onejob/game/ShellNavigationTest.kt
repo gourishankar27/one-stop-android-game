@@ -26,18 +26,11 @@ class ShellNavigationTest {
     }
 
     @Test
-    fun everyFutureDestinationIsTruthfulAndSystemBackReturnsHome() {
-        for ((button, title) in listOf(
-            "Preview gameplay" to "Gameplay preview",
-            "Preview results" to "Results preview",
-        )) {
-            open(button)
-            compose.onNodeWithText(title).assertIsDisplayed()
-            compose.onNodeWithText("Preview — not implemented").assertIsDisplayed()
-            compose.onNodeWithText("This preview contains no live room or game view.").assertIsDisplayed()
-            Espresso.pressBack()
-            compose.onNodeWithText("ONE JOB").performScrollTo().assertIsDisplayed()
-        }
+    fun homeHasRealAdmissionAndResultsRequireAServerRound() {
+        compose.onNodeWithText("Preview results").assertDoesNotExist()
+        open("Create room")
+        Espresso.pressBack()
+        compose.onNodeWithText("ONE JOB").performScrollTo().assertIsDisplayed()
     }
 
     @Test
