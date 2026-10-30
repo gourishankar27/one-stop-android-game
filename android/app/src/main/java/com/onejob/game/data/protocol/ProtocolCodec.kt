@@ -132,6 +132,7 @@ class ProtocolCodec {
                 require(message.room_revision != null)
                 val payload = message.payload
                 validatePublic(payload.public)
+                require(payload.last_client_action_seq >= 0)
                 require(validOwnedRoles(payload.stations.roles()))
                 val briefing = payload.briefing
                 require(briefing.remaining_ms >= 0 && briefing.waiting_player_ids.size <= 3)

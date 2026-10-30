@@ -257,10 +257,30 @@ An empty room is deleted; do not leave remaining players waiting for an expired
 host. Early implementations must be safe; Phase 14 hardens recovery and Android
 lifecycle handling.
 
-A process restart destroys rooms and credentials. The client returns to join/home
+A server process restart destroys rooms and credentials. The client returns to join/home
 with a useful explanation. Run a single worker; scaling with shared ownership is
 future work. WSS is required for external testing. Debug WS on a trusted LAN is
 explicitly opt-in and added in Phase 06. No automatic deploy is part of a plan.
+
+Phase 14 Android process recreation restores only the endpoint/token/identity
+binding from an atomic UID-private no-backup file. Explicit backup and device
+transfer rules exclude private data. A changed endpoint/corrupt record cannot
+restore a membership. Explicit leave/disconnect, expiry and unsafe protocol
+failure remove the record; owner disposal keeps it for process recovery. Storage
+failure clears in-memory authority and shows a local error. No credential or
+projection enters saved UI bundles. The server supplies only that player's
+`last_client_action_seq` in a full private snapshot; the repository merges the
+high-water mark, never replays actions and never persists ship/role/action state.
+A correlated snapshot may refresh an equal revision (a rejection can consume a
+sequence without changing the ship); stale revisions/retired rounds stay fenced.
+
+Non-configuration Activity stop suspends socket/heartbeats/retry and clears
+controls. Start resumes within the same absolute budget, including device sleep
+via elapsedRealtime. Rotation retains the application owner. Feedback detaches
+on pause/focus loss and establishes a silent recovery baseline. Displays use the
+same storage/transport policy but only public projections and never pause players.
+See [interruption matrix](INTERRUPTION_MATRIX.md), [ADR-023](DECISIONS.md#adr-023--process-safe-recovery-without-action-replay)
+and [actual validation](RESILIENCE_VALIDATION.md).
 
 Android `GameplayViewModel` emits bounded owned intents and renders accepted
 snapshots without physics. Output uses one in-flight request plus one conflated

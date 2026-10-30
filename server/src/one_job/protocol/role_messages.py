@@ -36,14 +36,14 @@ class BriefingReadyPayload(DTO):
 
 class PlayerActionPayload(DTO):
     round_id: RoundIdentifier
-    client_action_seq: Annotated[StrictInt, Field(ge=1)]
+    client_action_seq: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)]
     action: ActionInput
 
 
 class ActionRejectedPayload(DTO):
     code: ErrorCode
     message: StrictStr
-    client_action_seq: Annotated[StrictInt, Field(ge=1)]
+    client_action_seq: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)]
     round_id: RoundIdentifier
 
 
@@ -173,6 +173,7 @@ class BriefingStatus(DTO):
 
 
 class RoleStatePayload(DTO):
+    last_client_action_seq: Annotated[StrictInt, Field(ge=0, le=2**63 - 1)] = 0
     public: PublicRoundView
     stations: dict[RoleName, StationView] = Field(repr=False)
     briefing: BriefingStatus

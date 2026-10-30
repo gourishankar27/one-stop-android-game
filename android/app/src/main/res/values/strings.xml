@@ -90,7 +90,7 @@
   <string name="error_capacity">The server is full. Try again later.</string>
   <string name="error_input">The server could not accept these inputs. Check your name and code.</string>
   <string name="command_rejected">The server could not accept that request. Refresh your connection and try again.</string>
-  <string name="membership_expired">Your session ended. Create or join a room again.</string>
+  <string name="membership_expired">Your session ended or expired. The server may have restarted. Create or join a room again.</string>
   <string name="left_room">You left the room.</string>
   <string name="left_uncertain">You left on this phone. The server may keep your seat briefly while the connection closes.</string>
   <string name="live_lobby_title">Lobby</string>
@@ -121,7 +121,7 @@
   <string name="connection_connecting">Connection: connecting</string>
   <string name="connection_connected">Connection: connected</string>
   <string name="connection_reconnecting">Connection: reconnecting</string>
-  <string name="connection_expired">Connection: session expired</string>
+  <string name="connection_expired">Session unavailable or expired. The server may have restarted. Join the room again.</string>
   <string name="connection_disconnected">Connection: disconnected</string>
   <string name="connection_protocol_error">Connection: protocol error</string>
   <string name="connection_server_unavailable">Connection: server unavailable</string>
@@ -205,4 +205,6 @@
   <string name="identity_engineer">Engineer · power</string>
   <string name="identity_shields">Shields · protection</string>
   <string name="engine_output_accessibility">Requested engine output</string>
+  <string name="connection_backgrounded">Connection suspended while the app is in the background. Recovery requires returning within the session grace period.</string>
+  <string name="session_storage_problem">The private session could not be restored, saved or cleared. Reopen the app, then create or join a room again.</string>
 </resources>

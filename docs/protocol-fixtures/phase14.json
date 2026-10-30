@@ -1,0 +1,76 @@
+[
+  {
+    "fixture": "synthetic-2-player-owned-briefing-0",
+    "request": {
+      "version": 1,
+      "type": "request_state",
+      "request_id": "state-2-0",
+      "payload": {}
+    },
+    "response": {
+      "version": 1,
+      "type": "role_state",
+      "reply_to": "state-2-0",
+      "room_revision": 7,
+      "payload": {
+        "public": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "stage": "running",
+          "tick_index": 0,
+          "remaining_ms": 90000,
+          "countdown_remaining_ms": null,
+          "paused_from": null,
+          "hull_percent": 100,
+          "shield_percent": 60,
+          "warnings": [],
+          "result": null
+        },
+        "stations": {
+          "pilot": {
+            "lane": "center",
+            "maneuver_ready": false,
+            "evade_remaining_ticks": 0,
+            "cooldowns": {
+              "move_lane": 0,
+              "evade": 0
+            },
+            "hazards": []
+          }
+        },
+        "briefing": {
+          "acknowledged": true,
+          "waiting_player_ids": [],
+          "remaining_ms": 0,
+          "complete": true,
+          "held_for_gameplay": false
+        },
+        "last_client_action_seq": 23
+      }
+    },
+    "events": [
+      {
+        "version": 1,
+        "type": "role_assigned",
+        "reply_to": null,
+        "room_revision": 7,
+        "payload": {
+          "round_id": "00000000-0000-0000-0000-000000000063",
+          "roles": [
+            "pilot"
+          ],
+          "instructions": [
+            {
+              "role": "pilot",
+              "title": "Pilot",
+              "steps": [
+                "Choose the ship's lane and call out where cover is needed.",
+                "Ask Engineer for enough output before an evasive maneuver."
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "name": "process-recovery-owned-sequence"
+  }
+]

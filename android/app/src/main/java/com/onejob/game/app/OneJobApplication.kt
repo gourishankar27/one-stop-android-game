@@ -10,6 +10,7 @@ import com.onejob.game.data.network.Endpoint
 import com.onejob.game.data.network.EndpointProvider
 import com.onejob.game.data.network.OkHttpSocketDataSource
 import com.onejob.game.data.repository.SocketGameRepository
+import com.onejob.game.data.repository.AndroidSessionStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,7 +20,7 @@ class AppContainer(context: Context, repository: GameRepository? = null) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val gameRepository: GameRepository = repository ?: SocketGameRepository(
         EndpointProvider { Endpoint.parse(BuildConfig.WS_ENDPOINT, BuildConfig.DEBUG, BuildConfig.ALLOW_DEBUG_CLEARTEXT) },
-        OkHttpSocketDataSource(), scope,
+        OkHttpSocketDataSource(), scope, now = SystemClock::elapsedRealtime, sessionStorage = AndroidSessionStorage(context),
     )
     private val feedbackScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val feedbackPreferences = FeedbackPreferencesRepository(AndroidFeedbackPreferenceStorage(

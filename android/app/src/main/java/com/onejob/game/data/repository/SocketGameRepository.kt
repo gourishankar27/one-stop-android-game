@@ -35,6 +35,7 @@ class SocketGameRepository(
     parentScope: CoroutineScope,
     private val now: () -> Long = { System.nanoTime() / 1_000_000 },
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    sessionStorage: SessionStorage? = null,
 ) : GameRepository {
     private enum class Purpose { PUBLIC, HEARTBEAT, RESUME, SYNC, LEAVE }
     private sealed interface Event {
@@ -50,6 +51,7 @@ class SocketGameRepository(
         data class Retry(val epoch: Long) : Event
         data class RecoveryExpired(val epoch: Long) : Event
         data class CancelRequest(val id: String) : Event
+        data class Foreground(val value: Boolean) : Event
     }
     private class Pending(
         val operation: Operation, val purpose: Purpose, val timer: Job,
@@ -62,11 +64,15 @@ class SocketGameRepository(
     private val scope = CoroutineScope(parentScope.coroutineContext + owner)
     private val events = Channel<Event>(64)
     private val codec = ProtocolCodec()
-    private val credentials = MemoryCredentialStore()
+    private val credentials = MemoryCredentialStore(sessionStorage)
+    private val restored = credentials.restore((endpointProvider.current() as? EndpointResult.Ready)?.endpoint)
     private val revisions = RevisionGate()
     private val pending = mutableMapOf<String, Pending>()
-    private val _connection = MutableStateFlow(ConnectionState())
-    private val _status = MutableStateFlow(ConnectionStatus.DISCONNECTED)
+    private val _connection = MutableStateFlow(ConnectionState(
+        if (!restored) ConnectionStatus.UNAVAILABLE else if (credentials.value != null) ConnectionStatus.RECONNECTING else ConnectionStatus.DISCONNECTED,
+        if (!restored) ConnectionProblem.STORAGE else null,
+    ))
+    private val _status = MutableStateFlow(_connection.value.status)
     private val _session = MutableStateFlow(SessionState())
     private val _actionReceipts = MutableSharedFlow<ActionReceipt>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val actionReceipts = _actionReceipts.asSharedFlow()
@@ -89,8 +95,12 @@ class SocketGameRepository(
     private var connectReply: CompletableDeferred<CommandResult>? = null
     private var actionRound: String? = null
     private var actionSequence = 0L
+    private var storageFailed = !restored
+    private val visibility = MutableStateFlow(true)
+    private var foreground = false
 
     private val worker = scope.launch {
+        scope.launch { visibility.collect { events.send(Event.Foreground(it)) } }
         try {
             for (event in events) {
                 when (event) {
@@ -98,11 +108,11 @@ class SocketGameRepository(
                     is Event.Request -> onRequest(event.message, event.result, event.automaticSequence)
                     is Event.Leave -> onLeave(event.result)
                     is Event.Disconnect -> {
-                        resetMembership()
+                        val cleared = resetMembership()
                         stopTransport()
                         failPending()
                         state(ConnectionStatus.DISCONNECTED)
-                        event.result.complete(CommandResult.LeftLocally)
+                        event.result.complete(if (cleared) CommandResult.LeftLocally else CommandResult.NotSent(ConnectionProblem.STORAGE))
                     }
                     is Event.Incoming -> if (event.generation == generation) incoming(event.event)
                     is Event.Lost -> if (event.generation == generation) {
@@ -111,20 +121,21 @@ class SocketGameRepository(
                     }
                     is Event.OpenTimeout -> if (event.generation == generation && !opened) lost(ConnectionProblem.NETWORK)
                     is Event.Timeout -> if (event.generation == generation) timedOut(event.id)
-                    is Event.Heartbeat -> if (event.generation == generation && opened) {
+                    is Event.Heartbeat -> if (event.generation == generation && opened && visibility.value) {
                         send(ClientMessage.Ping(newId(), NoncePayload(newId())), Purpose.HEARTBEAT)
                     }
-                    is Event.Retry -> if (event.epoch == recoveryEpoch && recoveryDeadline != null) {
+                    is Event.Retry -> if (event.epoch == recoveryEpoch && recoveryDeadline != null && visibility.value && socket == null) {
                         if (now() >= recoveryDeadline!!) expire() else openSocket()
                     }
                     is Event.RecoveryExpired -> if (event.epoch == recoveryEpoch && recoveryDeadline != null) expire()
                     is Event.CancelRequest -> pending.remove(event.id)?.timer?.cancel()
+                    is Event.Foreground -> onForeground(event.value)
                 }
             }
         } finally {
             stopTransport()
             failPending()
-            resetMembership()
+            resetMembership(preserveDisk = true)
             state(ConnectionStatus.DISCONNECTED)
             source.close()
             events.close()
@@ -144,6 +155,7 @@ class SocketGameRepository(
     }
 
     override suspend fun connect(): CommandResult = ask { Event.Connect(it) }
+    override fun setForeground(foreground: Boolean) { visibility.value = foreground }
     override suspend fun ping(): CommandResult = connectedRequest { ClientMessage.Ping(it, NoncePayload(newId())) }
     override suspend fun create(name: String): CommandResult = connectedRequest { ClientMessage.Create(it, NamePayload(name.trim())) }
     override suspend fun join(roomCode: String, name: String): CommandResult = connectedRequest {
@@ -192,11 +204,12 @@ class SocketGameRepository(
     }
 
     private fun state(status: ConnectionStatus, problem: ConnectionProblem? = null) {
-        _connection.value = ConnectionState(status, problem, retryAttempt)
+        _connection.value = ConnectionState(status, if (storageFailed) ConnectionProblem.STORAGE else problem, retryAttempt)
         _status.value = status
     }
     private fun onConnect(result: CompletableDeferred<CommandResult>) {
         if (result.isCancelled) return
+        if (!visibility.value) { result.complete(CommandResult.NotSent(ConnectionProblem.BACKGROUNDED)); return }
         if (opened && syncId == null && recoveryDeadline == null) {
             result.complete(CommandResult.Accepted("connect", Operation.CONNECT))
             return
@@ -281,7 +294,7 @@ class SocketGameRepository(
 
     private fun onRequest(message: ClientMessage, result: CompletableDeferred<CommandResult>, automaticSequence: Boolean) {
         if (result.isCancelled) return
-        if (!opened || syncId != null || recoveryDeadline != null) {
+        if (!visibility.value || !opened || syncId != null || recoveryDeadline != null) {
             result.complete(CommandResult.NotSent(ConnectionProblem.NETWORK))
             return
         }
@@ -355,7 +368,11 @@ class SocketGameRepository(
                 if (!revisions.accept("session_accepted", identity.roomCode, null, message.room_revision!!)) {
                     protocolFailure(ProtocolIssue.MALFORMED); return
                 }
-                credentials.save(Credential(endpoint!!, identity, message.payload.resume_token))
+                if (!credentials.save(Credential(endpoint!!, identity, message.payload.resume_token))) {
+                    stopTransport(); failPending(); resetMembership()
+                    state(ConnectionStatus.UNAVAILABLE, ConnectionProblem.STORAGE); return
+                }
+                storageFailed = false
                 _session.value = SessionState(identity)
                 complete(message, request)
                 if (request.purpose == Purpose.RESUME) synchronize()
@@ -429,7 +446,10 @@ class SocketGameRepository(
                     (request != null && request.operation != Operation.STATE)) {
                     protocolFailure(ProtocolIssue.MALFORMED); return
                 }
-                if (revisions.accept("role_state", identity.roomCode, payload.public.round_id, message.room_revision!!)) {
+                if (revisions.accept("role_state", identity.roomCode, payload.public.round_id, message.room_revision!!,
+                    allowEqual = request?.operation == Operation.STATE)) {
+                    if (actionRound != payload.public.round_id) { actionRound = payload.public.round_id; actionSequence = 0 }
+                    actionSequence = maxOf(actionSequence, payload.last_client_action_seq)
                     _session.value = _session.value.copy(roleState = payload, publicRound = payload.public)
                 }
                 if (request != null) {
@@ -552,13 +572,17 @@ class SocketGameRepository(
         } else {
             stopTransport()
             failPending()
-            resetMembership()
+            if (!resetMembership()) state(ConnectionStatus.PROTOCOL_ERROR, ConnectionProblem.STORAGE)
         }
     }
     private fun onLeave(result: CompletableDeferred<CommandResult>) {
         if (result.isCancelled) return
-        resetMembership()
+        val cleared = resetMembership()
         failPending()
+        if (!cleared) {
+            stopTransport(); state(ConnectionStatus.UNAVAILABLE, ConnectionProblem.STORAGE)
+            result.complete(CommandResult.NotSent(ConnectionProblem.STORAGE)); return
+        }
         if (opened) send(ClientMessage.Leave(newId()), Purpose.LEAVE, result)
         else { stopTransport(); state(ConnectionStatus.DISCONNECTED); result.complete(CommandResult.LeftLocally) }
     }
@@ -568,12 +592,38 @@ class SocketGameRepository(
         _session.value = SessionState()
         revisions.clear()
         if (credentials.value == null) { state(ConnectionStatus.UNAVAILABLE, problem); return }
+        beginRecovery()
+        if (!visibility.value) { state(ConnectionStatus.RECONNECTING, ConnectionProblem.BACKGROUNDED); return }
+        scheduleRetry(problem)
+    }
+    private fun beginRecovery() {
         if (recoveryDeadline == null) {
             recoveryDeadline = now() + 30_000
             recoveryEpoch++
             val epoch = recoveryEpoch
             recoveryTimer = scope.launch { delay(30_000); events.send(Event.RecoveryExpired(epoch)) }
         }
+    }
+    private fun onForeground(value: Boolean) {
+        if (foreground == value) return
+        foreground = value
+        if (credentials.value == null) {
+            if (!value) { stopTransport(); failPending(); state(ConnectionStatus.DISCONNECTED) }
+            return
+        }
+        if (!value) {
+            stopTransport(); failPending(); retry?.cancel()
+            _session.value = SessionState(); revisions.clear()
+            beginRecovery()
+            state(ConnectionStatus.RECONNECTING, ConnectionProblem.BACKGROUNDED)
+        } else {
+            if (recoveryDeadline != null && now() >= recoveryDeadline!!) { expire(); return }
+            beginRecovery()
+            retry?.cancel()
+            if (socket == null) openSocket()
+        }
+    }
+    private fun scheduleRetry(problem: ConnectionProblem) {
         val delays = longArrayOf(1_000, 2_000, 4_000, 8_000)
         if (retryAttempt >= delays.size || now() + delays[retryAttempt] >= recoveryDeadline!!) {
             state(ConnectionStatus.UNAVAILABLE, ConnectionProblem.RECONNECT_EXHAUSTED)
@@ -590,9 +640,10 @@ class SocketGameRepository(
         resetMembership()
         state(ConnectionStatus.SESSION_EXPIRED)
     }
-    private fun resetMembership() {
+    private fun resetMembership(preserveDisk: Boolean = false): Boolean {
         actionRound = null; actionSequence = 0
-        credentials.clear()
+        val cleared = credentials.clear(preserveDisk)
+        if (!preserveDisk) storageFailed = !cleared
         _session.value = SessionState()
         revisions.clear()
         recoveryDeadline = null
@@ -600,6 +651,7 @@ class SocketGameRepository(
         retry?.cancel()
         retryAttempt = 0
         syncId = null
+        return cleared
     }
     private fun stopTransport() {
         generation++

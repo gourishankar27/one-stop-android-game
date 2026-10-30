@@ -101,7 +101,7 @@ class LobbyUiTest {
         compose.onNodeWithTag("lobbyCode").assertExists()
         compose.runOnIdle { repo.session.value = SessionState(); repo.connection.value = ConnectionState(ConnectionStatus.SESSION_EXPIRED) }
         compose.onNodeWithText("ONE JOB").assertIsDisplayed()
-        compose.onNodeWithText("Your session ended. Create or join a room again.").assertIsDisplayed()
+        compose.onNodeWithText("Your session ended or expired. The server may have restarted. Create or join a room again.").assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, repo.submits) }
     }
 }

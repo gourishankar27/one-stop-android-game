@@ -90,7 +90,8 @@ async def check(url: str, count: int) -> dict[str, Any]:
             roles = set(assigned["roles"])
             assert len(roles) in (1, 2) and set(private["stations"]) == roles
             assert {item["role"] for item in assigned["instructions"]} == roles
-            assert set(private) == {"public", "stations", "briefing"}
+            assert set(private) == {"public", "stations", "briefing", "last_client_action_seq"}
+            assert private["last_client_action_seq"] >= 0
             assert set(private["public"]) == PUBLIC_FIELDS
             assert private["public"]["stage"] == "briefing" and private["public"]["tick_index"] == 0
             assert private["public"]["round_id"] == assigned["round_id"]

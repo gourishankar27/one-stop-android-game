@@ -132,7 +132,11 @@ class LobbyViewModel(private val repository: GameRepository) : ViewModel() {
             !lobby.can_start || lobby.stage !in setOf("lobby", "finished", "aborted") -> StartBlock.SERVER
             else -> null
         }
-        val notice = if (connection.status == ConnectionStatus.SESSION_EXPIRED) LobbyFeedback.EXPIRED else feedback
+        val notice = when {
+            connection.problem == ConnectionProblem.STORAGE -> LobbyFeedback.STORAGE
+            connection.status == ConnectionStatus.SESSION_EXPIRED -> LobbyFeedback.EXPIRED
+            else -> feedback
+        }
         return LobbyUiState(
             connection, admitted || pending == LobbyOperation.LEAVE, identity?.roomCode,
             members, local?.ready == true,

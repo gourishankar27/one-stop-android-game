@@ -573,6 +573,51 @@ without flashes or continuous motion. Improve headings, slider naming and polite
 warning/feedback accessibility semantics. No rule/protocol/dependency, background
 audio service, marketing art, TV/casting or Phase 14 fault matrix is added.
 
+## ADR-023 — Process-safe recovery without action replay
+
+Date: 2026-10-29
+
+Status: Accepted
+
+The user selected Phase 14 while earlier phone/human gates remain deferred.
+Preserve implemented Phases 11–13 and the unrelated prompt edit. The interruption
+matrix was written before coding; actual physical cases remain separate gates.
+
+Retain the room owner, stable credentials, generation fencing, monotonic 30-second
+grace and server-authoritative pause/abort/host policy. Add private
+role_state.last_client_action_seq so process recovery can allocate the next
+sequence without persisting game state or resending uncertain actions. It is an
+additive v1 recovery field, defaults to zero for older snapshots, and never enters
+public_state. Cap wire action sequences at signed 64-bit range on both sides.
+Update synthetic fixtures and both implementations together.
+
+A correlated full owned snapshot may refresh an equal room revision, because a
+rejected action can consume its sequence without a ship mutation. Unsolicited
+duplicates, older revisions and retired rounds remain filtered. This was verified
+against the live server rather than inferred from transport acknowledgement.
+
+Persist only endpoint, opaque token and expected membership identity/kind in an
+atomic app-private no-backup file. Identity metadata binds a recovered receipt;
+no role/ship/roster/action queue or UI bundle contains the credential. Match the
+configured endpoint before resume, clear on explicit leave/disconnect/expiry or
+unsafe protocol failure, and retain across ordinary process/owner disposal.
+Use explicit backup/data-transfer exclusion rules. No account, cloud store,
+server persistence or new library is introduced. Storage errors fail closed with
+a visible local explanation, never an endless restore loop.
+
+Single-Activity non-configuration onStop suspends transport/retry and clears stale
+controls; onStart resumes using the original bounded recovery budget. Rotation
+keeps the application repository/socket. Lifecycle requests are conflated and
+serialized by the repository owner. No background audio/socket service or automatic
+business-command/action replay is added. Initial restored credentials auto-resume
+only to the matching endpoint, then require a full correlated private/public
+snapshot. Duplicate close 1008 expires the superseded client rather than taking
+the session back. Retry/Leave remain available from every recovery stage.
+
+Feedback retains Phase 13's silent recovery baseline. Displays retain separate
+public-only membership and cannot pause or host. Test optional features in the
+fault matrix; do not implement Phase 15 playtesting/balance or later networking.
+
 ## Decisions still deferred
 
 External backend hosting and an open-source license are not selected. Phase 16 must start with an evidence-based local-networking decision. Phase 17 must specify its submarine mechanics after spaceship playtests. Phase 18 reevaluates current store requirements and crash-reporting needs without publishing anything.

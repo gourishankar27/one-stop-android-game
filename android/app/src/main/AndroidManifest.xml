@@ -4,6 +4,8 @@
   <application
       android:name=".app.OneJobApplication"
       android:allowBackup="false"
+      android:fullBackupContent="@xml/backup_rules"
+      android:dataExtractionRules="@xml/data_extraction_rules"
       android:label="@string/app_name"
       android:supportsRtl="true"
       android:usesCleartextTraffic="false"

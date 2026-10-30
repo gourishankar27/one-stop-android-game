@@ -391,6 +391,17 @@ also has `round_id`, `tick_index` and elapsed milliseconds. Never compare revisi
 across different rooms. On resume, clear old cached views and request a full view;
 a newer round ID replaces all previous round-specific controls and cooldowns.
 
+The private full snapshot also carries the receiving player's consumed
+`last_client_action_seq` (including rejected current-round attempts). This
+infrastructure counter does not change simulation rules. Correlated full private
+snapshots may refresh an equal room revision, because a rejection can consume a
+sequence without a ship mutation. Unsolicited duplicate kinds, older revisions
+and retired rounds remain filtered. A new process merges this server counter;
+uncertain actions and unsent UI input are never replayed. Only the minimal
+credential/endpoint/identity binding survives in Android's private no-backup file;
+all station/public snapshots must be recovered afresh. Background suspension and
+host/display policy are specified in the [interruption matrix](INTERRUPTION_MATRIX.md).
+
 ## Projection shape
 
 `PublicRoundView`: round ID/stage, tick, time remaining, hull/shield percentages,

@@ -25,6 +25,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    override fun onStart() { super.onStart(); container.gameRepository.setForeground(true) }
+    override fun onStop() {
+        if (!isChangingConfigurations) container.gameRepository.setForeground(false)
+        super.onStop()
+    }
     override fun onResume() { super.onResume(); resumed = true; bindFeedback() }
     override fun onPause() { resumed = false; bindFeedback(); super.onPause() }
     override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); bindFeedback() }

@@ -46,7 +46,8 @@
           "remaining_ms": 60000,
           "complete": false,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -134,7 +135,8 @@
           "remaining_ms": 60000,
           "complete": false,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -220,7 +222,8 @@
           "remaining_ms": 60000,
           "complete": false,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -298,7 +301,8 @@
           "remaining_ms": 60000,
           "complete": false,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -374,7 +378,8 @@
           "remaining_ms": 60000,
           "complete": false,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [

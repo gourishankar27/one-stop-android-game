@@ -1,6 +1,6 @@
 # WebSocket protocol v1
 
-## Implemented Phase 12 subset
+## Implemented Phase 14 subset
 
 Phase 13 does not change the wire contract. Its optional local feedback uses the
 existing round/emergency IDs, server countdown snapshots and correlated action
@@ -183,8 +183,14 @@ fences generations and sends only credential resume, then a new correlated
 `request_state`. Delays are 1/2/4/8 seconds within an absolute 30-second budget,
 including handshakes and snapshot deadlines. There is no automatic create/join
 or action resend. Distinct snapshot kinds may share a revision; older/duplicate
-same-kind revisions and retired rounds are ignored. Credentials remain private
-in process memory and are cleared on explicit leave, expiry or owner closure.
+same-kind revisions and retired rounds are ignored. A correlated full owned
+snapshot may replace an equal revision: its consumed-action counter can advance
+without a ship mutation. Older revisions and retired rounds remain forbidden.
+Credentials stay in private repository/storage objects. Minimal endpoint/token/
+identity records survive process disposal in an atomic no-backup file and are
+cleared on explicit leave/disconnect, expiry, unsafe protocol failure or endpoint
+mismatch. Background suspension retains the original recovery budget, clears
+controls and stops transport/retries; foreground requires full snapshot recovery.
 
 Resume authenticates by digest before binding a connection. It retains identity
 and token, replaces/fences the old generation and closes an old active socket
@@ -318,7 +324,7 @@ and ping. Observer restrictions apply when Phase 12 is implemented.
 | `player_ready` | `ready: boolean` | `ack`, then lobby snapshot; controller in lobby/results |
 | `start_game` | `{}` | `ack`, then private `role_assigned` and state; host, connected/ready 2–3 players, lobby only |
 | `briefing_ready` | `round_id: UUID string` | `ack`; assigned player acknowledges all owned stations |
-| `player_action` | `round_id: UUID string, client_action_seq: integer>=1, action: Action` | `ack` after application or `action_rejected`; running, station owner |
+| `player_action` | `round_id: UUID string, client_action_seq: integer 1..2^63-1, action: Action` | `ack` after application or `action_rejected`; running, station owner |
 | `request_state` | `{}` | Full `lobby_state` and applicable `role_state`; display receives `public_state` |
 | `play_again` | `{}` | `ack`, new round/roles/briefing; host at finished/aborted and all connected/ready |
 | `return_to_lobby` | `{}` | `ack`, then `lobby_state`; host at finished/aborted; clears readiness |
@@ -356,7 +362,7 @@ commands are supplied by the application, not copied from untrusted fields.
 | `ack` | `operation: client message type`; player actions also `client_action_seq, applied_tick`; requester only |
 | `lobby_state` | `room_code, stage, host_player_id, players: [{player_id,name,connected,ready}], can_start: boolean`; room members |
 | `role_assigned` | `round_id, roles: [Role], instructions: [{role,title,steps:[string]}]`; owning player only |
-| `role_state` | `public: PublicRoundView, stations: {owned Role: StationView}, briefing: BriefingStatus`; owning player only |
+| `role_state` | `public: PublicRoundView, stations: {owned Role: StationView}, briefing: BriefingStatus, last_client_action_seq: integer 0..2^63-1 (default 0 for legacy snapshots)`; owning player only |
 | `public_state` | `public: PublicRoundView|null`; observers only; null in lobby |
 | `emergency_event` | `round_id, emergency_id, kind, status: started|resolved|failed`; players only, shared labels without targets |
 | `game_over` | `round_id, result: {outcome,reason,survived_ms,final_hull_percent,resolved_count,failed_count,players:[{player_id,name}]}`; players only |
@@ -470,3 +476,12 @@ by older clients; newly required fields, changed meanings or new required client
 types need a version bump. No implicit downgrade. Check example fixtures against
 both implementations from Phase 06 onward. Later phase names in this document
 are reserved design: `feature_unavailable` until those handlers exist.
+
+Phase 14 recovery: `role_state.last_client_action_seq` is the server-consumed
+sequence high-water mark for only the receiving player/current round, including
+rejected current-round attempts. A recovering client uses the greater of its
+local counter and this value, then increments. It does not retry uncertain
+actions. Public/display snapshots never contain this field. Full snapshots
+replace cleared views before controls become available. Minimal Android
+endpoint/token/identity records are app-private, backup-excluded, and removed
+on leave/expiry/endpoint mismatch. See [interruption matrix](INTERRUPTION_MATRIX.md).

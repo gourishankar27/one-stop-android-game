@@ -24,7 +24,7 @@ class ProtocolCodecTest {
 
     @Test
     fun sharedPythonFixturesDecodeAndOutgoingMessagesMatchExactly() {
-        for (file in listOf("phase03.json", "phase04.json", "phase06.json", "phase08.json", "phase09.json", "phase10.json", "phase11.json", "phase12.json")) {
+        for (file in listOf("phase03.json", "phase04.json", "phase06.json", "phase08.json", "phase09.json", "phase10.json", "phase11.json", "phase12.json", "phase14.json")) {
             val text = javaClass.classLoader!!.getResourceAsStream(file)!!.bufferedReader().use { it.readText() }
             for (element in codec.json.parseToJsonElement(text).jsonArray) {
                 val request = element.jsonObject.getValue("request")

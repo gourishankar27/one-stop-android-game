@@ -43,6 +43,10 @@ import kotlinx.serialization.Serializable
     override fun toString() = "OwnedStations(redacted)"
 }
 @Serializable data class BriefingStatus(val acknowledged: Boolean, val waiting_player_ids: List<String>, val remaining_ms: Long, val complete: Boolean, val held_for_gameplay: Boolean)
-@Serializable data class RoleStatePayload(val public: PublicRound, val stations: OwnedStations, val briefing: BriefingStatus) {
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+@Serializable data class RoleStatePayload(
+    val public: PublicRound, val stations: OwnedStations, val briefing: BriefingStatus,
+    @kotlinx.serialization.EncodeDefault val last_client_action_seq: Long = 0,
+) {
     override fun toString() = "RoleStatePayload(redacted)"
 }

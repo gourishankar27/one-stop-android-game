@@ -11,7 +11,7 @@ import com.onejob.game.data.protocol.EmergencyEventPayload
 enum class Operation { CONNECT, PING, CREATE, JOIN, JOIN_DISPLAY, RESUME, READY, START, STATE, LEAVE, ACTION, BRIEFING, PLAY_AGAIN, RETURN_TO_LOBBY }
 enum class ConnectionProblem {
     CONFIGURATION, NETWORK, BACKPRESSURE, COMMAND_UNCERTAIN, HEARTBEAT_TIMEOUT,
-    PROTOCOL, UNSUPPORTED_VERSION, RECONNECT_EXHAUSTED, ADMISSION_REQUIRED, SNAPSHOT_TIMEOUT,
+    PROTOCOL, UNSUPPORTED_VERSION, RECONNECT_EXHAUSTED, ADMISSION_REQUIRED, SNAPSHOT_TIMEOUT, BACKGROUNDED, STORAGE,
 }
 enum class RemoteCode {
     INVALID_MESSAGE, UNSUPPORTED_VERSION, UNKNOWN_TYPE, NOT_AUTHENTICATED, ROOM_NOT_FOUND,
@@ -55,11 +55,25 @@ sealed interface CommandResult {
 internal class Credential(val endpoint: Endpoint, val identity: SessionIdentity, val token: String) {
     override fun toString() = "Credential(redacted)"
 }
-internal class MemoryCredentialStore {
+internal class MemoryCredentialStore(private val storage: SessionStorage? = null) {
     var value: Credential? = null
         private set
-    fun save(credential: Credential) { value = credential }
-    fun clear() { value = null }
+    fun restore(endpoint: Endpoint?): Boolean = try {
+        val stored = storage?.read()
+        if (stored != null && stored.valid() && endpoint != null && stored.endpoint == endpoint.address) {
+            value = Credential(endpoint, stored.identity, stored.token)
+            true
+        } else if (stored != null) { storage?.write(null); false } else true
+    } catch (_: Exception) { value = null; false }
+    fun save(credential: Credential): Boolean = try {
+        storage?.write(StoredSession(credential.endpoint.address, credential.identity, credential.token))
+        value = credential
+        true
+    } catch (_: Exception) { value = null; false }
+    fun clear(preserveDisk: Boolean = false): Boolean {
+        value = null
+        return try { if (!preserveDisk) storage?.write(null); true } catch (_: Exception) { false }
+    }
     override fun toString() = "MemoryCredentialStore(redacted)"
 }
 
@@ -69,7 +83,7 @@ internal class RevisionGate {
     private val roomRevisions = mutableMapOf<String, Long>()
     private var activeRound: String? = null
     private val retiredRounds = ArrayDeque<String>()
-    fun accept(kind: String, room: String, round: String?, revision: Long): Boolean {
+    fun accept(kind: String, room: String, round: String?, revision: Long, allowEqual: Boolean = false): Boolean {
         if (revision < (roomRevisions[room] ?: -1)) return false
         if (round != null) {
             if (round in retiredRounds) return false
@@ -81,7 +95,7 @@ internal class RevisionGate {
         }
         val key = "$kind/$room/${round.orEmpty()}"
         val previous = revisions[key]
-        if (previous != null && revision <= previous) return false
+        if (previous != null && (revision < previous || (revision == previous && !allowEqual))) return false
         revisions[key] = revision
         roomRevisions[room] = revision
         if (roomRevisions.size > 8) roomRevisions.remove(roomRevisions.keys.first())

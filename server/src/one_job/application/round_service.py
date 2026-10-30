@@ -84,7 +84,7 @@ class RoundService:
                 complete=self.complete,
                 held_for_gameplay=False,
             ),
-        )
+        ).model_copy(update={"last_client_action_seq": self._sequences.get(player_id, 0)})
 
     def acknowledge(
         self, player_id: PlayerId, round_id: str, now: float

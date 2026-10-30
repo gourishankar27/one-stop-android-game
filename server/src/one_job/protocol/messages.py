@@ -184,7 +184,7 @@ class AckPayload(DTO):
 
 class ActionAckPayload(DTO):
     operation: Literal["player_action"] = "player_action"
-    client_action_seq: Annotated[StrictInt, Field(ge=1)]
+    client_action_seq: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)]
     applied_tick: NonnegativeInt
 
 

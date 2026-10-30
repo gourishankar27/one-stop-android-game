@@ -361,6 +361,21 @@ baseline review, profiles, limitations and asset validation are in
 [ASSET_ATTRIBUTION.md](ASSET_ATTRIBUTION.md). Phase 13 stays unchecked; the master
 ledger remains unchanged and earlier deferred gates remain open.
 
+## Resilience and reconnection (14)
+
+Use the pre-implementation [interruption matrix](INTERRUPTION_MATRIX.md) and
+[actual results](RESILIENCE_VALIDATION.md). The server fault matrix uses fake
+monotonic time for grace and simulation deadlines, concurrent resume/queued old
+actions, request/sequence retention and shutdown. Android uses virtual time for
+bounded recovery, app-private credential failure/clearing and no action replay;
+live instrumentation includes AtomicFile, backup exclusions, 2/3-player process
+owner replacement, display and terminal snapshots. UI checks use actual emulator
+background/process stop/reopen/restart, separately from required physical cases.
+Correlated full private snapshots must refresh an equal revision when consumed
+sequence advances without a ship mutation. Never infer a phone/Wi-Fi/human pass
+from scripted or emulator evidence. Phase 14 stays unchecked until the physical
+2/3-phone matrix runs, including the host.
+
 ## Manual playtests (15)
 
 Record date, build/config version, number of players, seed, setup time, outcome,

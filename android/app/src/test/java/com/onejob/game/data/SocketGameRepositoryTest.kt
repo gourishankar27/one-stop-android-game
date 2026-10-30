@@ -18,6 +18,13 @@ private const val PLAYER = "00000000-0000-0000-0000-000000000001"
 private const val ROUND = "00000000-0000-0000-0000-000000000010"
 private const val TOKEN = "SYNTHETIC_TOKEN_SENTINEL"
 
+private class FakeStorage : SessionStorage {
+    var saved: StoredSession? = null
+    var fails = false
+    override fun read(): StoredSession? { check(!fails); return saved }
+    override fun write(value: StoredSession?) { check(!fails); saved = value }
+}
+
 private class FakeSocket : SocketSession {
     override val events = Channel<SocketEvent>(64)
     val sent = mutableListOf<ClientMessage>()
@@ -48,12 +55,12 @@ private class FakeSource(private val clock: () -> Long) : SocketDataSource {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SocketGameRepositoryTest {
-    private class Rig(val scope: TestScope) {
+    private class Rig(val scope: TestScope, storage: SessionStorage? = null) {
         val source = FakeSource { scope.testScheduler.currentTime }
         private var ids = 0
         var endpoint = Endpoint.parse("ws://127.0.0.1:8000/ws", true, true)
         val repo = SocketGameRepository(EndpointProvider { endpoint }, source, scope,
-            now = { scope.testScheduler.currentTime }, newId = { "request-${++ids}" })
+            now = { scope.testScheduler.currentTime }, newId = { "request-${++ids}" }, sessionStorage = storage)
         val socket get() = source.sockets.last()
 
         suspend fun admit() {
@@ -581,4 +588,155 @@ class SocketGameRepositoryTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {rig.repo.actionReceipts.collect {late+=it}}
         runCurrent();assertTrue(late.isEmpty());rig.repo.closeAndJoin()
     }
+
+    @Test fun correlatedFullSnapshotRefreshesConsumedSequenceAtEqualRoomRevision() = runTest {
+        val rig=Rig(this); rig.admit()
+        val (assigned,state)=privateFixture(StationRole.PILOT)
+        rig.socket.reply(assigned); rig.socket.reply(state); runCurrent()
+        val refresh=async {rig.repo.requestState()}; runCurrent()
+        val request=rig.socket.sent.last() as ClientMessage.State
+        rig.socket.reply(state.copy(reply_to=request.request_id,payload=state.payload.copy(last_client_action_seq=23)))
+        runCurrent(); assertTrue(refresh.await() is CommandResult.Accepted)
+        assertEquals(23L,rig.repo.session.value.roleState!!.last_client_action_seq)
+        val action=async {rig.repo.performAction(assigned.payload.round_id,PlayerAction.Evade)}; runCurrent()
+        assertEquals(24L,(rig.socket.sent.last() as ClientMessage.Action).payload.client_action_seq)
+        rig.repo.closeAndJoin(); assertTrue(action.await() is CommandResult.Uncertain)
+    }
+
+    @Test fun processRecoveryRestoresSequenceOnlyFromFullOwnedSnapshotAndNeverReplaysActions() = runTest {
+        val disk = FakeStorage()
+        val before = Rig(this, disk); before.admit()
+        val (assigned, original) = privateFixture(StationRole.PILOT)
+        val running = original.copy(payload = original.payload.copy(
+            public = original.payload.public.copy(stage = "running"),
+            briefing = BriefingStatus(true, emptyList(), 0, true, false)))
+        before.socket.reply(assigned); before.socket.reply(running); runCurrent()
+        val uncertain = async { before.repo.performAction(assigned.payload.round_id, PlayerAction.Evade) }
+        runCurrent(); before.repo.closeAndJoin()
+        assertTrue(uncertain.await() is CommandResult.Uncertain)
+        assertNotNull(disk.saved)
+        assertFalse(disk.saved.toString().contains(TOKEN))
+        val after = Rig(this, disk)
+        assertEquals(ConnectionStatus.RECONNECTING, after.repo.connection.value.status)
+        runCurrent(); assertEquals(1, after.source.sockets.size)
+        after.socket.open(); runCurrent()
+        val resume = after.socket.sent.single() as ClientMessage.Resume
+        after.socket.reply(ServerMessage.SessionAccepted(1, resume.request_id, 9, SessionPayload("ABCD23", "player", PLAYER, TOKEN)))
+        runCurrent()
+        assertNull(after.repo.session.value.roleState)
+        assertTrue(after.repo.performAction(assigned.payload.round_id, PlayerAction.Evade) is CommandResult.NotSent)
+        val sync = after.socket.sent.last() as ClientMessage.State
+        after.socket.reply(after.lobby(9).let { it.copy(payload = it.payload.copy(stage = "running")) })
+        after.socket.reply(assigned.copy(room_revision = 9))
+        after.socket.reply(running.copy(reply_to = sync.request_id, room_revision = 9,
+            payload = running.payload.copy(last_client_action_seq = 23)))
+        runCurrent()
+        assertEquals(ConnectionStatus.CONNECTED, after.repo.connection.value.status)
+        assertEquals(0, after.socket.sent.filterIsInstance<ClientMessage.Action>().size)
+        val action = async { after.repo.performAction(assigned.payload.round_id, PlayerAction.Evade) }; runCurrent()
+        val request = after.socket.sent.last() as ClientMessage.Action
+        assertEquals(24L, request.payload.client_action_seq)
+        after.socket.reply(ServerMessage.Ack(1, request.request_id, 10, AckPayload("player_action", 24, 20)))
+        runCurrent(); assertTrue(action.await() is CommandResult.Accepted)
+        val leave = async { after.repo.leave() }; runCurrent()
+        assertNull(disk.saved)
+        after.repo.closeAndJoin(); assertTrue(leave.await() is CommandResult.Uncertain)
+        val third = Rig(this, disk); runCurrent()
+        assertTrue(third.source.sockets.isEmpty()); third.repo.closeAndJoin()
+    }
+
+    @Test fun backgroundSuspendsTransportAndPendingInputUntilFreshResumeWithoutExtendingGrace() = runTest {
+        val disk = FakeStorage(); val rig = Rig(this, disk); rig.admit()
+        val ready = async { rig.repo.setReady(true) }; runCurrent()
+        val old = rig.socket
+        rig.repo.setForeground(false); runCurrent()
+        assertTrue(old.cancelled); assertTrue(ready.await() is CommandResult.Uncertain)
+        assertNull(rig.repo.session.value.identity); assertNotNull(disk.saved)
+        assertEquals(ConnectionProblem.BACKGROUNDED, rig.repo.connection.value.problem)
+        assertTrue(rig.repo.setReady(false) is CommandResult.NotSent)
+        advanceTimeBy(20_000); runCurrent(); assertEquals(1, rig.source.sockets.size)
+        rig.repo.setForeground(true); runCurrent(); assertEquals(2, rig.source.sockets.size)
+        rig.socket.open(); runCurrent()
+        assertTrue(rig.socket.sent.single() is ClientMessage.Resume)
+        rig.repo.setForeground(false); runCurrent()
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(ConnectionStatus.SESSION_EXPIRED, rig.repo.connection.value.status)
+        assertNull(disk.saved)
+        rig.repo.setForeground(true); runCurrent(); assertEquals(2, rig.source.sockets.size)
+        rig.repo.closeAndJoin()
+    }
+
+    @Test fun restoredExpiredOrSupersededControllerAndDisplayClearCredentialWithoutTakeoverLoop() = runTest {
+        for (kind in listOf("player", "display")) for (superseded in listOf(false, true)) {
+            val disk = FakeStorage().apply { saved = StoredSession("ws://127.0.0.1:8000/ws",
+                SessionIdentity("ABCD23", if (kind == "player") PLAYER else null, kind), TOKEN) }
+            val rig = Rig(this, disk); runCurrent(); rig.socket.open(); runCurrent()
+            if (superseded) rig.socket.events.send(SocketEvent.Closed(1008))
+            else rig.socket.reply(ServerMessage.Error(1, (rig.socket.sent.single() as ClientMessage.Resume).request_id,
+                null, ErrorPayload("session_expired", "safe", false)))
+            runCurrent(); assertEquals(ConnectionStatus.SESSION_EXPIRED, rig.repo.connection.value.status)
+            assertNull(disk.saved); assertNull(rig.repo.session.value.identity)
+            advanceTimeBy(31_000); runCurrent(); assertEquals(1, rig.source.sockets.size)
+            rig.repo.closeAndJoin()
+        }
+    }
+
+    @Test fun differentEndpointMalformedRecordAndStorageFailureNeverAutomaticallyAdmit() = runTest {
+        for (invalid in listOf(false, true)) {
+            val disk = FakeStorage().apply { saved = StoredSession(if (invalid) "ws://127.0.0.1:8000/ws" else "wss://other.invalid/ws",
+                SessionIdentity(if (invalid) "bad" else "ABCD23", PLAYER), TOKEN) }
+            val rig = Rig(this, disk); runCurrent()
+            assertNull(disk.saved); assertTrue(rig.source.sockets.isEmpty())
+            assertEquals(ConnectionProblem.STORAGE,rig.repo.connection.value.problem)
+            rig.repo.closeAndJoin()
+        }
+        val unreadable = Rig(this, FakeStorage().apply { fails = true }); runCurrent()
+        assertEquals(ConnectionProblem.STORAGE, unreadable.repo.connection.value.problem)
+        assertTrue(unreadable.source.sockets.isEmpty()); unreadable.repo.closeAndJoin()
+        val disk = FakeStorage(); val rig = Rig(this, disk)
+        val create = async { rig.repo.create("Crew") }; runCurrent(); rig.socket.open(); runCurrent()
+        disk.fails = true
+        rig.socket.reply(ServerMessage.SessionAccepted(1,rig.socket.sent.single().request_id,1,SessionPayload("ABCD23","player",PLAYER,TOKEN)))
+        runCurrent(); assertTrue(create.await() is CommandResult.Uncertain)
+        assertEquals(ConnectionProblem.STORAGE,rig.repo.connection.value.problem)
+        assertNull(rig.repo.session.value.identity); rig.repo.closeAndJoin()
+    }
+
+    @Test fun removalStorageFailureIsVisibleAndNeverLeavesUsablePrivateControls() = runTest {
+        for(operation in listOf("leave","disconnect","expiry")) {
+            val disk=FakeStorage(); val rig=Rig(this,disk); rig.admit(); disk.fails=true
+            when(operation) {
+                "leave" -> assertEquals(CommandResult.NotSent(ConnectionProblem.STORAGE),rig.repo.leave())
+                "disconnect" -> assertEquals(CommandResult.NotSent(ConnectionProblem.STORAGE),rig.repo.disconnect())
+                else -> {rig.socket.events.send(SocketEvent.Closed(1008)); runCurrent()}
+            }
+            assertNull(rig.repo.session.value.identity)
+            assertEquals(ConnectionProblem.STORAGE,rig.repo.connection.value.problem)
+            assertTrue(rig.repo.setReady(true) is CommandResult.NotSent)
+            assertNotNull(disk.saved) // The failing filesystem cannot be claimed erased.
+            rig.repo.closeAndJoin()
+        }
+    }
+
+    @Test fun repeatedBackgroundRecoveryKeepsOneSocketAndNoOldCallbacksOrReadyReplay() = runTest {
+        val disk=FakeStorage(); val rig=Rig(this,disk); rig.admit()
+        repeat(25) { index ->
+            val old=rig.socket
+            rig.repo.setForeground(false); runCurrent()
+            rig.repo.setForeground(true); runCurrent(); rig.socket.open(); runCurrent()
+            val resume=rig.socket.sent.single() as ClientMessage.Resume
+            val revision=10L+index
+            rig.socket.reply(ServerMessage.SessionAccepted(1,resume.request_id,revision,SessionPayload("ABCD23","player",PLAYER,TOKEN)))
+            runCurrent()
+            val sync=rig.socket.sent.last() as ClientMessage.State
+            rig.socket.reply(rig.lobby(revision,sync.request_id)); runCurrent()
+            old.reply(rig.lobby(revision+100,ready=true)); runCurrent()
+            assertEquals(ConnectionStatus.CONNECTED,rig.repo.connection.value.status)
+            assertFalse(rig.repo.session.value.lobby!!.players.single().ready)
+            assertEquals(1,rig.source.sockets.count { !it.cancelled })
+            assertEquals(2,rig.socket.sent.size)
+        }
+        rig.repo.closeAndJoin(); assertTrue(rig.source.sockets.all { it.cancelled })
+    }
+
 }

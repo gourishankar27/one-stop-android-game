@@ -59,7 +59,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -246,7 +247,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -409,7 +411,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -596,7 +599,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -767,7 +771,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -936,7 +941,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -1096,7 +1102,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -1264,7 +1271,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -1427,7 +1435,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [
@@ -1581,7 +1590,8 @@
           "remaining_ms": 0,
           "complete": true,
           "held_for_gameplay": false
-        }
+        },
+        "last_client_action_seq": 0
       }
     },
     "events": [

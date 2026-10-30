@@ -9,13 +9,13 @@ import com.onejob.game.data.repository.RemoteCode
 
 enum class LobbyFeedback {
     ROOM_NOT_FOUND, ROOM_FULL, DISPLAY_FULL, ROOM_STARTED, CAPACITY, INVALID_INPUT, NOT_HOST,
-    NOT_READY, FEATURE_UNAVAILABLE, UNCERTAIN, NOT_SENT, EXPIRED, REJECTED, LEFT, LEFT_UNCERTAIN,
+    NOT_READY, FEATURE_UNAVAILABLE, UNCERTAIN, NOT_SENT, EXPIRED, REJECTED, LEFT, LEFT_UNCERTAIN, STORAGE,
 }
 
 fun CommandResult.feedback(): LobbyFeedback? = when (this) {
     is CommandResult.Accepted, CommandResult.LeftLocally -> null
     is CommandResult.Uncertain -> LobbyFeedback.UNCERTAIN
-    is CommandResult.NotSent -> LobbyFeedback.NOT_SENT
+    is CommandResult.NotSent -> if (problem == com.onejob.game.data.repository.ConnectionProblem.STORAGE) LobbyFeedback.STORAGE else LobbyFeedback.NOT_SENT
     is CommandResult.Rejected -> when (code) {
         RemoteCode.ROOM_NOT_FOUND -> LobbyFeedback.ROOM_NOT_FOUND
         RemoteCode.ROOM_FULL -> LobbyFeedback.ROOM_FULL
@@ -46,6 +46,7 @@ fun LobbyFeedbackText(feedback: LobbyFeedback?) {
         LobbyFeedback.UNCERTAIN -> R.string.command_uncertain
         LobbyFeedback.NOT_SENT -> R.string.admission_not_sent
         LobbyFeedback.EXPIRED -> R.string.membership_expired
+        LobbyFeedback.STORAGE -> R.string.session_storage_problem
         LobbyFeedback.REJECTED -> R.string.command_rejected
         LobbyFeedback.LEFT -> R.string.left_room
         LobbyFeedback.LEFT_UNCERTAIN -> R.string.left_uncertain

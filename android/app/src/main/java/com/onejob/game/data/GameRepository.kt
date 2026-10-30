@@ -22,6 +22,8 @@ enum class ConnectionStatus {
 
 /** Typed client intents and allowlisted authoritative snapshots; no client simulation. */
 interface GameRepository : Closeable {
+    /** Foreground changes are conflated by the connection owner; never replay actions. */
+    fun setForeground(foreground: Boolean) {}
     val actionReceipts: kotlinx.coroutines.flow.Flow<com.onejob.game.data.repository.ActionReceipt>
         get() = kotlinx.coroutines.flow.emptyFlow()
     suspend fun joinDisplay(roomCode: String): CommandResult = CommandResult.NotSent(ConnectionProblem.CONFIGURATION)

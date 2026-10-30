@@ -26,6 +26,8 @@ fun ConnectionFeedback(state: ConnectionState, result: ProbeResult = ProbeResult
             ConnectionProblem.PROTOCOL, ConnectionProblem.UNSUPPORTED_VERSION -> R.string.protocol_problem
             ConnectionProblem.RECONNECT_EXHAUSTED -> R.string.reconnect_exhausted
             ConnectionProblem.ADMISSION_REQUIRED -> R.string.admission_required
+            ConnectionProblem.BACKGROUNDED -> R.string.connection_backgrounded
+            ConnectionProblem.STORAGE -> R.string.session_storage_problem
             else -> R.string.network_problem
         }))
     }
